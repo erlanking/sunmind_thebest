@@ -47,7 +47,35 @@ app.*.map.json
 # Claude
 CLAUDE.md
 
-# Sensitive files
+# Sensitive files — Firebase & Google
 android/app/google-services.json
 android/app/client_secret_*.json
 ios/Runner/GoogleService-Info.plist
+lib/firebase_options.dart
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# API keys & secrets
+**/secrets.dart
+**/config.secret.dart
+secrets/
+credentials/
+
+# Key & certificate files
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+*.crt
+
+# Android signing config (if separate)
+android/key.properties
+android/app/upload-keystore.jks
+
+# macOS
+.DS_Store
+**/.DS_Store
