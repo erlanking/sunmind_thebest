@@ -46,3 +46,8 @@ app.*.map.json
 
 # Claude
 CLAUDE.md
+
+# Sensitive files
+android/app/google-services.json
+android/app/client_secret_*.json
+ios/Runner/GoogleService-Info.plist
