@@ -1,0 +1,40 @@
+# Flutter
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+build/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Android
+/android/.gradle
+/android/app/build/
+/android/app/google-services.json
+/local.properties
+.cxx/
+
+# iOS
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Runner/GoogleService-Info.plist
+
+# macOS
+/macos/Pods/
+
+# Secrets
+*.keystore
+*.jks
+key.properties
+android/app/client_secret_*.json
+
+# Misc
+coverage/
