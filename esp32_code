@@ -1,0 +1,971 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+#include <PubSubClient.h>
+#include <Wire.h>
+#include <BH1750.h>
+#include <WiFiManager.h>
+#include <HTTPClient.h>
+#include <time.h>
+#include <DHT.h>
+#include <Preferences.h>
+#include <Adafruit_ADS1X15.h>
+#define DHT_PIN 4
+#define DHT_TYPE DHT11
+// ===================================================
+//  НАСТРОЙКИ — меняй только здесь
+// ===================================================
+
+const char* device_id   = "SMP-0002";
+const char* backend_url = "https://sunmindthebestbackend-production.up.railway.app/api/device-data";
+const char* mqtt_server = "broker.hivemq.com";
+
+// MQTT топики (строятся в setup из device_id)
+char mqtt_client_id[32];
+char T_CONTROL[48];
+char T_BRIGHTNESS[48];
+char T_MODE[48];
+char T_SCHEDULE_SET[56];
+char T_SCHEDULE_ENABLE[56];
+char T_STATUS[48];
+char T_STATE[48];
+char T_SCHEDULE_STAT[56];
+char T_WIFI_CONFIG[56];
+char T_POWER_SOURCE[56];
+char T_CHARGE[56];
+char T_BATT_MODE[56];
+
+// ===================================================
+//  ПИНЫ
+// ===================================================
+
+const int LED_PIN    = 18;
+const int MOTION_PIN = 16;
+const int RELAY_PIN  = 26;  // реле: LOW=АКБ (NO), HIGH=розетка (NC)
+const int CHARGE_PIN = 33;  // реле зарядки через XL6009: LOW=вкл (активное LOW)
+#define BATT_DIVIDER_RATIO  8.0f   // откалибровано по мультиметру (11.7V реал / 3.24V на A0)
+const int I2C_SDA    = 21;  // BH1750
+const int I2C_SCL    = 22;  // BH1750
+const int I2C2_SDA   = 25;  // ADS1115
+const int I2C2_SCL   = 32;  // ADS1115
+
+// ===================================================
+//  ОБЪЕКТЫ
+// ===================================================
+
+WebServer    httpServer(80);
+WiFiClient   espClient;
+PubSubClient mqtt(espClient);
+BH1750       bh1750;
+TwoWire      Wire2 = TwoWire(1);
+Adafruit_ADS1115 ads;
+
+// ===================================================
+//  СОСТОЯНИЕ УСТРОЙСТВА
+// ===================================================
+DHT dht(DHT_PIN, DHT_TYPE);
+
+float temperature = 0.0;
+float humidity    = 0.0;
+unsigned long tDht = 0;
+const unsigned long DHT_INTERVAL = 3000;
+
+// --- Свет ---
+bool  ledOn       = false;
+int   brightness  = 0;
+int   savedBright = 255;
+int   toggleCount = 0;
+
+// --- Режим света: 0=manual, 1=auto(датчики), 2=schedule ---
+int deviceMode = 0;
+
+// --- Датчики ---
+float luxValue       = 0.0;
+bool  motionActive   = false;
+float battVoltage    = 0.0;
+int   battPercent    = 0;
+bool  powerFromMains = false;
+bool  isCharging     = false;
+bool  adsFound       = false;
+
+// --- Режим управления АКБ: 0=manual(ручной), 1=auto(авто) ---
+int   battChargeMode    = 1;   // по умолчанию авто
+int   lowBattThreshold  = 20;  // % — переключить на розетку / начать зарядку
+int   fullBattThreshold = 90;  // % — остановить зарядку
+bool  autoSolarCharge   = true;
+
+// --- Расписание ---
+struct Schedule {
+  int  onHour, onMinute;
+  int  offHour, offMinute;
+  bool enabled;
+};
+
+const int MAX_SCH = 5;
+Schedule schedules[MAX_SCH] = { {18, 0, 6, 0, true} };
+int scheduleCount = 1;
+
+bool schedActive     = false;
+bool prevSchedActive = false;
+
+// ===================================================
+//  ТАЙМЕРЫ
+// ===================================================
+
+unsigned long tMotionLast  = 0;
+unsigned long tDebounce    = 0;
+int  motionPinLast         = LOW;
+int  motionPinStable       = LOW;
+const unsigned long MOTION_TIMEOUT = 30000;
+const int           DEBOUNCE_MS    = 200;
+
+int lastAutoBright = -1;
+
+unsigned long tSchedCheck = 0;
+unsigned long tTelemetry  = 0;
+unsigned long tMqttRetry  = 0;
+unsigned long tLux        = 0;
+unsigned long tBatt       = 0;
+
+const unsigned long SCHED_INTERVAL = 30000;
+const unsigned long TELEM_INTERVAL = 100000;
+const unsigned long MQTT_RETRY     = 5000;
+const unsigned long LUX_INTERVAL   = 3000;
+const unsigned long BATT_INTERVAL  = 3000;
+
+// ===================================================
+//  БЛОК 1: УПРАВЛЕНИЕ СВЕТОДИОДОМ
+// ===================================================
+
+void ledWrite(int val) {
+  analogWrite(LED_PIN, constrain(val, 0, 255));
+}
+
+void ledSet(int val, bool save = true) {
+  val = constrain(val, 0, 255);
+  brightness = val;
+  if (save && val > 0) savedBright = val;
+  ledWrite(val);
+  ledOn = (val > 0);
+}
+
+void ledSmooth(int target, bool save = true) {
+  target = constrain(target, 0, 255);
+  if (target == brightness) return;
+  int step = (target > brightness) ? 5 : -5;
+  for (int i = brightness; (step > 0) ? (i <= target) : (i >= target); i += step) {
+    ledWrite(i);
+    delay(8);
+  }
+  brightness = target;
+  if (save && target > 0) savedBright = target;
+  ledOn = (target > 0);
+}
+
+void ledApply() {
+  if (ledOn) {
+    if (savedBright <= 0) savedBright = 255;
+    ledSet(savedBright, false);
+  } else {
+    ledSet(0, false);
+  }
+}
+
+// ===================================================
+//  БЛОК 2: ДАТЧИКИ
+// ===================================================
+
+void readLux() {
+  if (millis() - tLux < LUX_INTERVAL) return;
+  tLux = millis();
+  float v = bh1750.readLightLevel();
+  if (v >= 0 && v < 65535) luxValue = v;
+  Serial.printf("Lux: %.1f\n", luxValue);
+}
+
+// Таблица напряжение->процент для свинцово-кислотного 12V (Solomon)
+int voltageToPercent(float v) {
+  if (v >= 12.70f) return 100;
+  if (v >= 12.60f) return 95;
+  if (v >= 12.50f) return 90;
+  if (v >= 12.40f) return 80;
+  if (v >= 12.30f) return 70;
+  if (v >= 12.20f) return 60;
+  if (v >= 12.10f) return 50;
+  if (v >= 12.00f) return 40;
+  if (v >= 11.90f) return 30;
+  if (v >= 11.80f) return 20;
+  if (v >= 11.70f) return 10;
+  if (v >= 11.60f) return  5;
+  return 0;
+}
+
+void readBattery() {
+  if (millis() - tBatt < BATT_INTERVAL) return;
+  tBatt = millis();
+
+  if (!adsFound) {
+    Serial.println("Batt: ADS1115 не подключён");
+    return;
+  }
+
+  int16_t raw = ads.readADC_SingleEnded(0);
+  if (raw < 0) raw = 0;
+  float adc        = raw * 0.0001250f;          // GAIN_ONE: 1 LSB = 0.125mV
+  float rawVoltage = adc * BATT_DIVIDER_RATIO;
+
+  if (battVoltage < 1.0f) battVoltage = rawVoltage;
+  else battVoltage = battVoltage * 0.95f + rawVoltage * 0.05f;
+
+  battPercent = voltageToPercent(battVoltage);
+  Serial.printf("Batt: %.2fV %d%% [%s] | LED: %d/255\n",
+    battVoltage, battPercent,
+    battChargeMode == 1 ? "АВТО" : "РУЧНОЙ",
+    brightness);
+
+  // Авто-логика работает только в режиме battChargeMode == 1
+  if (battChargeMode == 1) {
+
+    // Автопереключение источника питания
+    if (battPercent < lowBattThreshold && !powerFromMains) {
+      powerFromMains = true;
+      digitalWrite(RELAY_PIN, HIGH);
+      Serial.printf("[RELAY AUTO] АКБ < %d%% -> розетка\n", lowBattThreshold);
+    } else if (battPercent > (lowBattThreshold + 5) && powerFromMains) {
+      powerFromMains = false;
+      digitalWrite(RELAY_PIN, LOW);
+      Serial.printf("[RELAY AUTO] АКБ > %d%% -> АКБ\n", lowBattThreshold + 5);
+    }
+
+    // Автозарядка (только если autoSolarCharge включён)
+    if (autoSolarCharge) {
+      if (battPercent < lowBattThreshold && !isCharging) {
+        isCharging = true;
+        digitalWrite(CHARGE_PIN, LOW);   // LOW = вкл (активное LOW реле)
+        Serial.printf("[CHARGE AUTO] АКБ < %d%% -> зарядка ВКЛ\n", lowBattThreshold);
+      } else if (battPercent >= fullBattThreshold && isCharging) {
+        isCharging = false;
+        digitalWrite(CHARGE_PIN, HIGH);  // HIGH = выкл
+        Serial.printf("[CHARGE AUTO] АКБ >= %d%% -> зарядка ВЫКЛ\n", fullBattThreshold);
+      }
+    }
+  }
+  // В ручном режиме реле и зарядка управляются только через MQTT/HTTP
+}
+
+void readMotion() {
+  int reading = digitalRead(MOTION_PIN);
+  if (reading != motionPinLast) tDebounce = millis();
+  motionPinLast = reading;
+  if (millis() - tDebounce > DEBOUNCE_MS && reading != motionPinStable) {
+    motionPinStable = reading;
+    if (motionPinStable == HIGH && !motionActive) {
+      motionActive = true;
+      tMotionLast  = millis();
+      Serial.println("Движение: ДА");
+    }
+  }
+  if (motionPinStable == HIGH) tMotionLast = millis();
+  if (motionActive && millis() - tMotionLast > MOTION_TIMEOUT) {
+    motionActive = false;
+    Serial.println("Движение: таймаут");
+  }
+}
+
+// ===================================================
+//  БЛОК 3: РАСПИСАНИЕ
+// ===================================================
+
+void getTime(int &h, int &m) {
+  struct tm t;
+  if (!getLocalTime(&t)) { h = -1; m = -1; return; }
+  h = t.tm_hour; m = t.tm_min;
+}
+
+bool scheduleIsActive() {
+  int h, m;
+  getTime(h, m);
+  if (h == -1) { Serial.println("NTP не синхронизирован"); return false; }
+  int now = h * 60 + m;
+  for (int i = 0; i < scheduleCount; i++) {
+    if (!schedules[i].enabled) continue;
+    int on  = schedules[i].onHour  * 60 + schedules[i].onMinute;
+    int off = schedules[i].offHour * 60 + schedules[i].offMinute;
+    bool active = (on > off) ? (now >= on || now < off) : (now >= on && now < off);
+    if (active) return true;
+  }
+  return false;
+}
+
+void checkSchedule() {
+  if (millis() - tSchedCheck < SCHED_INTERVAL) return;
+  tSchedCheck     = millis();
+  prevSchedActive = schedActive;
+  schedActive     = scheduleIsActive();
+  int h, m; getTime(h, m);
+  if (h != -1)
+    Serial.printf("Время: %02d:%02d | Расписание: %s\n", h, m, schedActive ? "АКТИВНО" : "НЕТ");
+  if (prevSchedActive && !schedActive) {
+    lastAutoBright = -1;
+    ledSmooth(0, false);
+    ledOn = false;
+    Serial.println("Расписание закончилось");
+  }
+}
+
+// ===================================================
+//  БЛОК 4: АВТО-ЯРКОСТЬ
+// ===================================================
+
+int calcAutoBright() {
+  if (!motionActive)   return 0;
+  if (luxValue >= 400) return 0;
+  if (luxValue >= 200) return 70;
+  if (luxValue >= 100) return 130;
+  if (luxValue >= 50)  return 200;
+  return 255;
+}
+
+void runAutoSensors() {
+  readMotion();
+  int target = calcAutoBright();
+  if (target == lastAutoBright) return;
+  lastAutoBright = target;
+  if (target > 0) {
+    ledOn = true;
+    ledSmooth(target, true);
+    Serial.printf("Авто вкл: %d (Lux=%.1f)\n", target, luxValue);
+  } else {
+    ledOn = false;
+    ledSmooth(0, false);
+    Serial.printf("Авто выкл (Lux=%.1f)\n", luxValue);
+  }
+}
+
+// ===================================================
+//  БЛОК 5: MQTT — ПУБЛИКАЦИЯ
+// ===================================================
+
+void mqttPublishStatus() {
+  if (!mqtt.connected()) return;
+  DynamicJsonDocument doc(640);
+  doc["temperature"]           = temperature;
+  doc["humidity"]              = humidity;
+  doc["deviceId"]              = device_id;
+  doc["led_state"]             = ledOn ? "ON" : "OFF";
+  doc["mode"]                  = (deviceMode == 0) ? "manual" : (deviceMode == 1) ? "auto" : "schedule";
+  doc["motion_active"]         = motionActive;
+  doc["toggle_count"]          = toggleCount;
+  doc["brightness"]            = brightness;
+  doc["brightness_pct"]        = map(brightness, 0, 255, 0, 100);
+  doc["lux"]                   = luxValue;
+  doc["battery_voltage"]       = battVoltage;
+  doc["battery_percent"]       = battPercent;
+  doc["power_source"]          = powerFromMains ? "mains" : "battery";
+  doc["is_charging"]           = isCharging;
+  doc["charge_mode"]           = battChargeMode == 1 ? "auto" : "manual";
+  doc["low_batt_threshold"]    = lowBattThreshold;
+  doc["full_charge_threshold"] = fullBattThreshold;
+  doc["auto_solar_charge"]     = autoSolarCharge;
+  doc["schedule_active"]       = schedActive;
+  doc["uptime"]                = millis() / 1000;
+  doc["ip"]                    = WiFi.localIP().toString();
+  String json; serializeJson(doc, json);
+  mqtt.publish(T_STATUS, json.c_str());
+  mqtt.publish(T_STATE, ledOn ? "ON" : "OFF", true);
+  Serial.println("[MQTT] Статус опубликован");
+}
+
+void mqttPublishSchedule() {
+  if (!mqtt.connected()) return;
+  DynamicJsonDocument doc(512);
+  JsonArray arr = doc.to<JsonArray>();
+  for (int i = 0; i < scheduleCount; i++) {
+    JsonObject s = arr.createNestedObject();
+    s["on_hour"]    = schedules[i].onHour;
+    s["on_minute"]  = schedules[i].onMinute;
+    s["off_hour"]   = schedules[i].offHour;
+    s["off_minute"] = schedules[i].offMinute;
+    s["enabled"]    = schedules[i].enabled;
+  }
+  String json; serializeJson(doc, json);
+  mqtt.publish(T_SCHEDULE_STAT, json.c_str(), true);
+  Serial.println("[MQTT] Расписание опубликовано");
+}
+
+// ===================================================
+//  БЛОК 6: MQTT — ОБРАБОТКА ВХОДЯЩИХ КОМАНД
+// ===================================================
+
+void mqttCallback(char* topic, byte* payload, unsigned int len) {
+  String msg, t = String(topic);
+  for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
+  Serial.printf("[MQTT] [%s]: %s\n", topic, msg.c_str());
+
+  if (t == T_CONTROL) {
+    if (deviceMode != 0) { Serial.println("Не ручной режим — отклонено"); return; }
+    if (msg == "ON"  || msg == "on"  || msg == "1") { ledOn = true;  ledApply(); toggleCount++; }
+    if (msg == "OFF" || msg == "off" || msg == "0") { ledOn = false; ledApply(); toggleCount++; }
+    mqttPublishStatus();
+
+  } else if (t == T_BRIGHTNESS) {
+    if (deviceMode != 0) { Serial.println("Не ручной режим — яркость отклонена"); return; }
+    int v = msg.toInt();
+    if (v >= 0 && v <= 255) {
+      if (v > 0 && !ledOn) ledOn = true;
+      ledSet(v);
+      mqttPublishStatus();
+    }
+
+  } else if (t == T_MODE) {
+    if      (msg == "manual"   || msg == "MANUAL")   { deviceMode = 0; }
+    else if (msg == "auto"     || msg == "AUTO")     { deviceMode = 1; lastAutoBright = -1; }
+    else if (msg == "schedule" || msg == "SCHEDULE") { deviceMode = 2; tSchedCheck = 0; }
+    Serial.printf("Режим света: %s\n", msg.c_str());
+    mqttPublishStatus();
+
+  } else if (t == T_SCHEDULE_SET) {
+    DynamicJsonDocument doc(512);
+    if (deserializeJson(doc, msg)) { Serial.println("Ошибка JSON расписания"); return; }
+    if (doc.is<JsonArray>()) {
+      scheduleCount = 0;
+      for (JsonObject s : doc.as<JsonArray>()) {
+        if (scheduleCount >= MAX_SCH) break;
+        schedules[scheduleCount++] = {
+          s["on_hour"] | 0, s["on_minute"] | 0,
+          s["off_hour"] | 0, s["off_minute"] | 0,
+          s["enabled"] | true
+        };
+      }
+    } else {
+      scheduleCount = 1;
+      schedules[0] = {
+        doc["on_hour"] | 18, doc["on_minute"] | 0,
+        doc["off_hour"] | 6, doc["off_minute"] | 0,
+        doc["enabled"] | true
+      };
+    }
+    tSchedCheck = 0;
+    mqttPublishSchedule();
+    Serial.printf("Расписание обновлено: %d записей\n", scheduleCount);
+
+  } else if (t == T_SCHEDULE_ENABLE) {
+    DynamicJsonDocument doc(64);
+    if (!deserializeJson(doc, msg) && doc.is<JsonObject>()) {
+      int idx      = doc["index"]   | -1;
+      bool enabled = doc["enabled"] | true;
+      if (idx == -1) { for (int i = 0; i < scheduleCount; i++) schedules[i].enabled = enabled; }
+      else if (idx >= 0 && idx < scheduleCount) schedules[idx].enabled = enabled;
+    } else {
+      bool enabled = (msg == "true" || msg == "1");
+      for (int i = 0; i < scheduleCount; i++) schedules[i].enabled = enabled;
+    }
+    tSchedCheck = 0;
+    mqttPublishSchedule();
+
+  } else if (t == T_POWER_SOURCE) {
+    if (msg == "ac" || msg == "AC" || msg == "mains") {
+      powerFromMains = true;
+      digitalWrite(RELAY_PIN, HIGH);
+      Serial.println("[RELAY] Команда: -> розетка");
+    } else if (msg == "battery" || msg == "BATTERY") {
+      powerFromMains = false;
+      digitalWrite(RELAY_PIN, LOW);
+      Serial.println("[RELAY] Команда: -> АКБ");
+    }
+    mqttPublishStatus();
+
+  } else if (t == T_CHARGE) {
+    if (msg == "true" || msg == "1") {
+      isCharging = true;
+      digitalWrite(CHARGE_PIN, LOW);   // LOW = вкл
+      Serial.println("[CHARGE] ВКЛ");
+    } else {
+      isCharging = false;
+      digitalWrite(CHARGE_PIN, HIGH);  // HIGH = выкл
+      Serial.println("[CHARGE] ВЫКЛ");
+    }
+    mqttPublishStatus();
+
+  } else if (t == T_BATT_MODE) {
+    DynamicJsonDocument doc(128);
+    if (deserializeJson(doc, msg)) { Serial.println("Ошибка JSON battery-mode"); return; }
+    String mode = doc["chargeMode"] | "";
+    if      (mode == "manual") { battChargeMode = 0; Serial.println("[BATT] Режим: РУЧНОЙ"); }
+    else if (mode == "auto")   { battChargeMode = 1; Serial.println("[BATT] Режим: АВТО");   }
+    if (doc.containsKey("lowBatteryThreshold"))
+      lowBattThreshold  = constrain((int)(doc["lowBatteryThreshold"]  | 20), 5,  50);
+    if (doc.containsKey("fullChargeThreshold"))
+      fullBattThreshold = constrain((int)(doc["fullChargeThreshold"]  | 90), 60, 100);
+    if (doc.containsKey("autoSolarCharge"))
+      autoSolarCharge = doc["autoSolarCharge"] | true;
+    Serial.printf("[BATT] Пороги: %d%% / %d%% | Солнце: %s\n",
+      lowBattThreshold, fullBattThreshold, autoSolarCharge ? "да" : "нет");
+    mqttPublishStatus();
+
+  } else if (t == T_WIFI_CONFIG) {
+    DynamicJsonDocument doc(128);
+    if (deserializeJson(doc, msg)) { Serial.println("Ошибка JSON WiFi"); return; }
+    const char* ssid = doc["ssid"] | "";
+    const char* pass = doc["password"] | "";
+    if (strlen(ssid) == 0) { Serial.println("WiFi: пустой SSID"); return; }
+    Preferences prefs;
+    prefs.begin("sunmind", false);
+    prefs.putString("ssid", ssid);
+    prefs.putString("pass", pass);
+    prefs.end();
+    Serial.printf("Новый WiFi: %s — перезагрузка...\n", ssid);
+    mqtt.publish(T_STATUS, "{\"wifi_update\":\"restarting\"}");
+    delay(1000);
+    ESP.restart();
+  }
+}
+
+// ===================================================
+//  БЛОК 7: MQTT — ПЕРЕПОДКЛЮЧЕНИЕ
+// ===================================================
+
+void mqttReconnect() {
+  if (millis() - tMqttRetry < MQTT_RETRY) return;
+  tMqttRetry = millis();
+  Serial.printf("MQTT подключение как %s...", mqtt_client_id);
+  if (mqtt.connect(mqtt_client_id)) {
+    Serial.println(" OK");
+    mqtt.subscribe(T_CONTROL);
+    mqtt.subscribe(T_BRIGHTNESS);
+    mqtt.subscribe(T_MODE);
+    mqtt.subscribe(T_SCHEDULE_SET);
+    mqtt.subscribe(T_SCHEDULE_ENABLE);
+    mqtt.subscribe(T_WIFI_CONFIG);
+    mqtt.subscribe(T_POWER_SOURCE);
+    mqtt.subscribe(T_CHARGE);
+    mqtt.subscribe(T_BATT_MODE);
+    mqttPublishStatus();
+    mqttPublishSchedule();
+  } else {
+    Serial.printf(" FAIL rc=%d\n", mqtt.state());
+  }
+}
+
+// ===================================================
+//  БЛОК 8: HTTP -> BACKEND (телеметрия)
+// ===================================================
+
+void sendTelemetry() {
+  if (millis() - tTelemetry < TELEM_INTERVAL) return;
+  tTelemetry = millis();
+  mqttPublishStatus();
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.begin(backend_url);
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(5000);
+  DynamicJsonDocument doc(640);
+  doc["temperature"]          = temperature;
+  doc["humidity"]             = humidity;
+  doc["deviceId"]             = device_id;
+  doc["lux"]                  = luxValue;
+  doc["motion"]               = motionActive;
+  doc["brightness"]           = brightness;
+  doc["batteryVoltage"]       = battVoltage;
+  doc["batteryPercent"]       = battPercent;
+  doc["powerSource"]          = powerFromMains ? "mains" : "battery";
+  doc["isCharging"]           = isCharging;
+  doc["chargeMode"]           = battChargeMode == 1 ? "auto" : "manual";
+  doc["lowBatteryThreshold"]  = lowBattThreshold;
+  doc["fullChargeThreshold"]  = fullBattThreshold;
+  doc["autoSolarCharge"]      = autoSolarCharge;
+  doc["mode"]                 = (deviceMode == 0) ? "manual" : (deviceMode == 1) ? "auto" : "schedule";
+  doc["ledState"]             = ledOn;
+  String body; serializeJson(doc, body);
+  int code = http.POST(body);
+  Serial.printf("Телеметрия: HTTP %d\n", code > 0 ? code : -1);
+  http.end();
+}
+
+// ===================================================
+//  БЛОК 9: HTTP API HANDLERS
+// ===================================================
+
+void sendCORS() {
+  httpServer.sendHeader("Access-Control-Allow-Origin",  "*");
+  httpServer.sendHeader("Access-Control-Allow-Methods", "POST,GET,OPTIONS");
+  httpServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+void handleLedControl() {
+  sendCORS();
+  if (deviceMode != 0) { httpServer.send(400, "application/json", "{\"error\":\"Not manual mode\"}"); return; }
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(128);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  bool s = doc["state"];
+  if (s != ledOn) { ledOn = s; ledApply(); toggleCount++; mqttPublishStatus(); }
+  DynamicJsonDocument res(128);
+  res["led_state"] = ledOn; res["brightness"] = brightness; res["toggle_count"] = toggleCount;
+  String out; serializeJson(res, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleBrightnessCtrl() {
+  sendCORS();
+  if (deviceMode != 0) { httpServer.send(400, "application/json", "{\"error\":\"Not manual mode\"}"); return; }
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(128);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  int v = doc["brightness"] | -1;
+  if (v < 0 || v > 255) { httpServer.send(400, "application/json", "{\"error\":\"0-255\"}"); return; }
+  if (v > 0 && !ledOn) ledOn = true;
+  ledSet(v);
+  mqttPublishStatus();
+  DynamicJsonDocument res(128);
+  res["brightness"] = brightness; res["led_state"] = ledOn;
+  String out; serializeJson(res, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleToggle() {
+  sendCORS();
+  if (deviceMode != 0) { httpServer.send(400, "application/json", "{\"error\":\"Not manual mode\"}"); return; }
+  ledOn = !ledOn; ledApply(); toggleCount++;
+  mqttPublishStatus();
+  DynamicJsonDocument res(128);
+  res["led_state"] = ledOn; res["toggle_count"] = toggleCount;
+  String out; serializeJson(res, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleModeChange() {
+  sendCORS();
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(64);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  String mode = doc["mode"] | "";
+  if      (mode == "manual")   { deviceMode = 0; }
+  else if (mode == "auto")     { deviceMode = 1; lastAutoBright = -1; }
+  else if (mode == "schedule") { deviceMode = 2; tSchedCheck = 0; }
+  else { httpServer.send(400, "application/json", "{\"error\":\"manual|auto|schedule\"}"); return; }
+  mqttPublishStatus();
+  DynamicJsonDocument res(64);
+  res["mode"] = mode;
+  String out; serializeJson(res, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleStatus() {
+  sendCORS();
+  DynamicJsonDocument doc(640);
+  doc["temperature"]           = temperature;
+  doc["humidity"]              = humidity;
+  doc["deviceId"]              = device_id;
+  doc["led_state"]             = ledOn;
+  doc["motion_active"]         = motionActive;
+  doc["toggle_count"]          = toggleCount;
+  doc["brightness"]            = brightness;
+  doc["brightness_pct"]        = map(brightness, 0, 255, 0, 100);
+  doc["lux"]                   = luxValue;
+  doc["battery_voltage"]       = battVoltage;
+  doc["battery_percent"]       = battPercent;
+  doc["power_source"]          = powerFromMains ? "mains" : "battery";
+  doc["is_charging"]           = isCharging;
+  doc["charge_mode"]           = battChargeMode == 1 ? "auto" : "manual";
+  doc["low_batt_threshold"]    = lowBattThreshold;
+  doc["full_charge_threshold"] = fullBattThreshold;
+  doc["auto_solar_charge"]     = autoSolarCharge;
+  doc["schedule_active"]       = schedActive;
+  doc["mode"]                  = (deviceMode == 0) ? "manual" : (deviceMode == 1) ? "auto" : "schedule";
+  doc["ip"]                    = WiFi.localIP().toString();
+  doc["uptime"]                = millis() / 1000;
+  doc["mqtt_ok"]               = mqtt.connected();
+  String out; serializeJson(doc, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void readDHT() {
+  if (millis() - tDht < DHT_INTERVAL) return;
+  tDht = millis();
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  if (!isnan(h) && !isnan(t)) {
+    humidity    = h;
+    temperature = t;
+    Serial.printf("Temp: %.1f C  Humidity: %.1f%%\n", temperature, humidity);
+  } else {
+    Serial.println("DHT11 ошибка чтения");
+  }
+}
+
+void handleChargeControl() {
+  sendCORS();
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(64);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  bool charge = doc["charge"] | false;
+  isCharging = charge;
+  digitalWrite(CHARGE_PIN, charge ? LOW : HIGH);  // LOW = вкл (активное LOW реле)
+  Serial.printf("[CHARGE] HTTP: зарядка %s\n", charge ? "ВКЛ" : "ВЫКЛ");
+  mqttPublishStatus();
+  DynamicJsonDocument res(64);
+  res["is_charging"] = isCharging;
+  String out; serializeJson(res, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleBatteryChargeMode() {
+  sendCORS();
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(128);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  String mode = doc["chargeMode"] | "";
+  if      (mode == "manual") { battChargeMode = 0; }
+  else if (mode == "auto")   { battChargeMode = 1; }
+  else if (mode.length() > 0) {
+    httpServer.send(400, "application/json", "{\"error\":\"manual|auto\"}"); return;
+  }
+  if (doc.containsKey("lowBatteryThreshold"))
+    lowBattThreshold  = constrain((int)(doc["lowBatteryThreshold"]  | 20), 5,  50);
+  if (doc.containsKey("fullChargeThreshold"))
+    fullBattThreshold = constrain((int)(doc["fullChargeThreshold"]  | 90), 60, 100);
+  if (doc.containsKey("autoSolarCharge"))
+    autoSolarCharge = doc["autoSolarCharge"] | true;
+  Serial.printf("[BATT HTTP] Режим: %s | Пороги: %d%% / %d%%\n",
+    battChargeMode == 1 ? "АВТО" : "РУЧНОЙ", lowBattThreshold, fullBattThreshold);
+  mqttPublishStatus();
+  DynamicJsonDocument res(128);
+  res["chargeMode"]          = battChargeMode == 1 ? "auto" : "manual";
+  res["lowBatteryThreshold"] = lowBattThreshold;
+  res["fullChargeThreshold"] = fullBattThreshold;
+  res["autoSolarCharge"]     = autoSolarCharge;
+  String out; serializeJson(res, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleScheduleGet() {
+  sendCORS();
+  DynamicJsonDocument doc(512);
+  JsonArray arr = doc.to<JsonArray>();
+  for (int i = 0; i < scheduleCount; i++) {
+    JsonObject s = arr.createNestedObject();
+    s["on_hour"]    = schedules[i].onHour;
+    s["on_minute"]  = schedules[i].onMinute;
+    s["off_hour"]   = schedules[i].offHour;
+    s["off_minute"] = schedules[i].offMinute;
+    s["enabled"]    = schedules[i].enabled;
+    s["index"]      = i;
+  }
+  String out; serializeJson(doc, out);
+  httpServer.send(200, "application/json", out);
+}
+
+void handleSchedulePost() {
+  sendCORS();
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(512);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  if (doc.is<JsonArray>()) {
+    scheduleCount = 0;
+    for (JsonObject s : doc.as<JsonArray>()) {
+      if (scheduleCount >= MAX_SCH) break;
+      schedules[scheduleCount++] = {
+        s["on_hour"] | 0, s["on_minute"] | 0,
+        s["off_hour"] | 0, s["off_minute"] | 0,
+        s["enabled"] | true
+      };
+    }
+  } else {
+    scheduleCount = 1;
+    schedules[0] = {
+      doc["on_hour"] | 18, doc["on_minute"] | 0,
+      doc["off_hour"] | 6, doc["off_minute"] | 0,
+      doc["enabled"] | true
+    };
+  }
+  tSchedCheck = 0;
+  mqttPublishSchedule();
+  httpServer.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void handleScheduleEnable() {
+  sendCORS();
+  String body = httpServer.arg("plain");
+  DynamicJsonDocument doc(64);
+  if (body.length() == 0 || deserializeJson(doc, body)) {
+    httpServer.send(400, "application/json", "{\"error\":\"Bad JSON\"}"); return;
+  }
+  bool enabled = doc["enabled"] | true;
+  int  idx     = doc["index"]   | -1;
+  if (idx == -1) { for (int i = 0; i < scheduleCount; i++) schedules[i].enabled = enabled; }
+  else if (idx >= 0 && idx < scheduleCount) schedules[idx].enabled = enabled;
+  else { httpServer.send(400, "application/json", "{\"error\":\"Bad index\"}"); return; }
+  tSchedCheck = 0;
+  mqttPublishSchedule();
+  httpServer.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+// ===================================================
+//  SETUP
+// ===================================================
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.printf("\n=== SunMind %s ===\n", device_id);
+  dht.begin();
+  Serial.println("DHT11: OK");
+
+  // Строим топики
+  snprintf(mqtt_client_id,    sizeof(mqtt_client_id),    "esp32-%s",                device_id);
+  snprintf(T_CONTROL,         sizeof(T_CONTROL),         "home/%s/control",         device_id);
+  snprintf(T_BRIGHTNESS,      sizeof(T_BRIGHTNESS),      "home/%s/brightness",      device_id);
+  snprintf(T_MODE,            sizeof(T_MODE),            "home/%s/mode",            device_id);
+  snprintf(T_SCHEDULE_SET,    sizeof(T_SCHEDULE_SET),    "home/%s/schedule/set",    device_id);
+  snprintf(T_SCHEDULE_ENABLE, sizeof(T_SCHEDULE_ENABLE), "home/%s/schedule/enable", device_id);
+  snprintf(T_STATUS,          sizeof(T_STATUS),          "home/%s/status",          device_id);
+  snprintf(T_STATE,           sizeof(T_STATE),           "home/%s/state",           device_id);
+  snprintf(T_SCHEDULE_STAT,   sizeof(T_SCHEDULE_STAT),   "home/%s/schedule/stat",   device_id);
+  snprintf(T_WIFI_CONFIG,     sizeof(T_WIFI_CONFIG),     "home/%s/wifi/config",     device_id);
+  snprintf(T_POWER_SOURCE,    sizeof(T_POWER_SOURCE),    "home/%s/power-source",    device_id);
+  snprintf(T_CHARGE,          sizeof(T_CHARGE),          "home/%s/charge",          device_id);
+  snprintf(T_BATT_MODE,       sizeof(T_BATT_MODE),       "home/%s/battery-mode",    device_id);
+
+  // Пины
+  pinMode(RELAY_PIN,  OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);    // LOW = АКБ
+  pinMode(CHARGE_PIN, OUTPUT);
+  digitalWrite(CHARGE_PIN, HIGH);  // HIGH = зарядка выкл
+  pinMode(LED_PIN,    OUTPUT);
+  pinMode(MOTION_PIN, INPUT);
+  Serial.printf("PIR RAW: %d\n", digitalRead(MOTION_PIN));
+  ledWrite(0);
+
+  // BH1750 на Wire (GPIO21/22)
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (bh1750.begin(BH1750::CONTINUOUS_HIGH_RES_MODE))
+    Serial.println("BH1750: OK");
+  else
+    Serial.println("BH1750: не найден");
+
+  // ADS1115 на Wire2 (GPIO25/32)
+  Wire2.begin(I2C2_SDA, I2C2_SCL);
+  ads.setGain(GAIN_ONE);
+  adsFound = ads.begin(0x48, &Wire2);
+  Serial.println(adsFound ? "ADS1115: OK" : "ADS1115: не найден — проверь GPIO25/32");
+
+  // WiFi
+  Preferences prefs;
+  prefs.begin("sunmind", true);
+  String savedSSID = prefs.getString("ssid", "");
+  String savedPass = prefs.getString("pass", "");
+  prefs.end();
+
+  bool wifiOk = false;
+  if (savedSSID.length() > 0) {
+    Serial.printf("WiFi из памяти: %s\n", savedSSID.c_str());
+    WiFi.begin(savedSSID.c_str(), savedPass.c_str());
+    unsigned long tWifi = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - tWifi < 15000) {
+      delay(500); Serial.print(".");
+    }
+    Serial.println();
+    wifiOk = (WiFi.status() == WL_CONNECTED);
+    if (wifiOk) Serial.printf("WiFi OK | IP: %s\n", WiFi.localIP().toString().c_str());
+    else        Serial.println("Saved WiFi недоступен, запускаем портал...");
+  }
+
+  if (!wifiOk) {
+    WiFiManager wm;
+    wm.setConfigPortalTimeout(120);
+    if (wm.autoConnect("SunMind-Setup"))
+      Serial.printf("WiFi OK | IP: %s\n", WiFi.localIP().toString().c_str());
+    else
+      Serial.println("WiFi: нет подключения, работаем автономно");
+  }
+
+  WiFi.setSleep(false);
+
+  // NTP (GMT+6 Кыргызстан)
+  configTime(6 * 3600, 0, "pool.ntp.org");
+  Serial.println("NTP: запрос времени...");
+
+  // MQTT
+  mqtt.setServer(mqtt_server, 1883);
+  mqtt.setCallback(mqttCallback);
+
+  // HTTP роуты
+  httpServer.on("/led",                 HTTP_POST,    handleLedControl);
+  httpServer.on("/toggle",              HTTP_POST,    handleToggle);
+  httpServer.on("/brightness",          HTTP_POST,    handleBrightnessCtrl);
+  httpServer.on("/mode",                HTTP_POST,    handleModeChange);
+  httpServer.on("/status",              HTTP_GET,     handleStatus);
+  httpServer.on("/schedule",            HTTP_GET,     handleScheduleGet);
+  httpServer.on("/schedule",            HTTP_POST,    handleSchedulePost);
+  httpServer.on("/schedule/enable",     HTTP_POST,    handleScheduleEnable);
+  httpServer.on("/charge",              HTTP_POST,    handleChargeControl);
+  httpServer.on("/battery-charge-mode", HTTP_POST,    handleBatteryChargeMode);
+
+  // CORS preflight
+  auto cors = []() { sendCORS(); httpServer.send(204); };
+  httpServer.on("/led",                 HTTP_OPTIONS, cors);
+  httpServer.on("/toggle",              HTTP_OPTIONS, cors);
+  httpServer.on("/brightness",          HTTP_OPTIONS, cors);
+  httpServer.on("/mode",                HTTP_OPTIONS, cors);
+  httpServer.on("/status",              HTTP_OPTIONS, cors);
+  httpServer.on("/schedule",            HTTP_OPTIONS, cors);
+  httpServer.on("/schedule/enable",     HTTP_OPTIONS, cors);
+  httpServer.on("/charge",              HTTP_OPTIONS, cors);
+  httpServer.on("/battery-charge-mode", HTTP_OPTIONS, cors);
+
+  httpServer.enableCORS(true);
+  httpServer.begin();
+  Serial.println("HTTP: запущен");
+}
+
+// ===================================================
+//  LOOP
+// ===================================================
+
+void loop() {
+  httpServer.handleClient();
+
+  if (!mqtt.connected()) mqttReconnect();
+  mqtt.loop();
+
+  readLux();
+  readBattery();
+  readDHT();
+
+  if (deviceMode == 1) {
+    runAutoSensors();
+  } else if (deviceMode == 2) {
+    checkSchedule();
+    if (schedActive) {
+      if (!ledOn) {
+        ledSmooth(savedBright > 0 ? savedBright : 255, false);
+        ledOn = true;
+        Serial.println("Расписание -> свет ВКЛ");
+        mqttPublishStatus();
+      }
+    } else {
+      if (ledOn) {
+        ledSmooth(0, false);
+        ledOn = false;
+        Serial.println("Расписание -> свет ВЫКЛ");
+        mqttPublishStatus();
+      }
+    }
+  }
+
+  sendTelemetry();
+}
