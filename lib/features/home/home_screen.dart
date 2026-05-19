@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isDragging = false;
 
   List<Map<String, dynamic>> _devices = [];
+  List<Map<String, dynamic>> _allZones = [];
   List<Map<String, dynamic>> _cards = [];
 
   bool get _hasCards => _cards.isNotEmpty;
@@ -247,6 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final zones = await _api.getZones();
       final devices = await _api.getDevices();
+      _allZones = zones;
       _devices = _mergeDeviceSources(zones, devices).where((device) {
         final deviceId = _deviceIdOf(device);
         return deviceId.isNotEmpty && !_hiddenDeviceIds.contains(deviceId);
@@ -295,6 +297,43 @@ class _HomeScreenState extends State<HomeScreen> {
     final zoneKeys = grouped.keys.toList()..sort();
     for (final zoneKey in zoneKeys) {
       cards.add(_buildZoneCard(zoneKey, grouped[zoneKey]!, colorIndex));
+      colorIndex += 1;
+    }
+
+    // Show empty zones (zones that exist on backend but have no devices)
+    final populatedZoneIds = grouped.values
+        .expand((devices) => devices)
+        .map((d) => (d['backendZoneId'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final zone in _allZones) {
+      final zoneId = zone['id']?.toString() ?? '';
+      if (zoneId.isEmpty || populatedZoneIds.contains(zoneId)) continue;
+      final zoneKey = 'zone:$zoneId';
+      final meta = _zoneMeta[zoneKey] ?? const <String, dynamic>{};
+      final color = _roomColors[colorIndex % _roomColors.length];
+      cards.add({
+        'id': 'zone:$zoneId',
+        'kind': 'zone',
+        'zoneKey': zoneKey,
+        'zoneId': zoneId,
+        'name': (meta['name'] ?? zone['name'] ?? 'Зона').toString(),
+        'emoji': (meta['emoji'] ?? '💡').toString(),
+        'color': color,
+        'on': false,
+        'motion': false,
+        'online': false,
+        'brightness': 0.0,
+        'batteryPercent': 0,
+        'lux': 0,
+        'temperature': 0.0,
+        'humidity': 0.0,
+        'deviceCount': 0,
+        'deviceIds': <String>[],
+        'deviceId': '',
+        'devices': <Map<String, dynamic>>[],
+        'deviceStatus': 'OK',
+      });
       colorIndex += 1;
     }
 

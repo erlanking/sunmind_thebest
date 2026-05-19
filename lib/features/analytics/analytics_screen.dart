@@ -2290,44 +2290,6 @@ class _AiHintCardState extends State<_AiHintCard> {
               height: 1.45,
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () {},
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: kSunriseGradient,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'Применить',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A0F00),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: () => setState(() => _dismissed = true),
-                child: Text(
-                  'Позже',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: kA2,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );

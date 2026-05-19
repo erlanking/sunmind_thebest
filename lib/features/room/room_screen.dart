@@ -30,6 +30,10 @@ class _RoomScreenState extends State<RoomScreen> {
   bool _membershipChanged = false;
   bool _nightGuardLoading = false;
   bool _nightGuardEnabled = false;
+  bool _powerSourceLoading = false;
+  String _powerSource = 'battery'; // 'battery' | 'ac'
+  bool _chargingLoading = false;
+  bool _isCharging = false;
   int _nightGuardStartHour = 22;
   int _nightGuardStartMinute = 0;
   int _nightGuardEndHour = 6;
@@ -102,6 +106,8 @@ class _RoomScreenState extends State<RoomScreen> {
             device['led_state']?.toString().toUpperCase() == 'ON';
       }
     }
+    _powerSource = (data['powerSource'] as String?)?.toLowerCase() == 'ac' ? 'ac' : 'battery';
+    _isCharging = data['isCharging'] == true;
     _nightGuardEnabled = data['nightGuardEnabled'] == true;
     _nightGuardStartHour = (data['nightGuardStartHour'] as num?)?.toInt() ?? 22;
     _nightGuardStartMinute = (data['nightGuardStartMinute'] as num?)?.toInt() ?? 0;
@@ -124,6 +130,9 @@ class _RoomScreenState extends State<RoomScreen> {
         _nightGuardStartMinute = (status['nightGuardStartMinute'] as num?)?.toInt() ?? _nightGuardStartMinute;
         _nightGuardEndHour = (status['nightGuardEndHour'] as num?)?.toInt() ?? _nightGuardEndHour;
         _nightGuardEndMinute = (status['nightGuardEndMinute'] as num?)?.toInt() ?? _nightGuardEndMinute;
+        final ps = (status['powerSource'] as String?)?.toLowerCase();
+        if (ps == 'ac' || ps == 'battery') _powerSource = ps!;
+        _isCharging = status['isCharging'] == true;
       });
     } catch (_) {
       // Молча игнорируем — используем данные из roomData
@@ -664,19 +673,6 @@ class _RoomScreenState extends State<RoomScreen> {
               ),
 
               const SizedBox(height: 16),
-
-              // ── Battery summary card ──
-              if (!isZone)
-                _BatterySummaryCard(
-                  batteryPercent: battery,
-                  deviceId: deviceIds.isEmpty ? '' : deviceIds.first,
-                  deviceName: displayName,
-                  panelColor: panelColor,
-                  textColor: textColor,
-                  mutedColor: mutedColor,
-                ),
-
-              if (!isZone) const SizedBox(height: 16),
 
               // ── Night guard card ──
               if (!isZone)
@@ -1420,7 +1416,7 @@ class _PanelsGrid extends StatelessWidget {
                       angle: -0.05,
                       child: SizedBox(
                         width: 160,
-                        height: 212,
+                        height: 224,
                         child: _PanelCard(
                           deviceId: id,
                           name: name,
@@ -2054,151 +2050,6 @@ class _StatusDot extends StatelessWidget {
   }
 }
 
-// ── Battery summary card ───────────────────────────────────────────────
-
-class _BatterySummaryCard extends StatelessWidget {
-  final int batteryPercent;
-  final String deviceId;
-  final String deviceName;
-  final Color panelColor;
-  final Color textColor;
-  final Color mutedColor;
-
-  const _BatterySummaryCard({
-    required this.batteryPercent,
-    required this.deviceId,
-    required this.deviceName,
-    required this.panelColor,
-    required this.textColor,
-    required this.mutedColor,
-  });
-
-  Color get _batteryColor {
-    if (batteryPercent <= 20) return const Color(0xFFE55454);
-    if (batteryPercent <= 50) return const Color(0xFFFF9F43);
-    return const Color(0xFF39B86D);
-  }
-
-  IconData get _batteryIcon {
-    if (batteryPercent <= 20) return Icons.battery_alert_rounded;
-    if (batteryPercent <= 50) return Icons.battery_3_bar_rounded;
-    return Icons.battery_full_rounded;
-  }
-
-  String get _batteryLabel {
-    if (batteryPercent <= 20) return 'Низкий заряд';
-    if (batteryPercent <= 50) return 'Средний заряд';
-    if (batteryPercent >= 90) return 'Полный заряд';
-    return 'Нормальный заряд';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _batteryColor;
-
-    return GestureDetector(
-      onTap: () => context.push(
-        '/battery/$deviceId',
-        extra: {'name': deviceName},
-      ),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: panelColor,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: accent.withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              alignment: Alignment.center,
-              child: Icon(_batteryIcon, color: accent, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'АККУМУЛЯТОР',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: mutedColor,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        batteryPercent > 0 ? '$batteryPercent%' : '—',
-                        style: TextStyle(
-                          color: accent,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 3),
-                        child: Text(
-                          _batteryLabel,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: mutedColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      value: batteryPercent / 100,
-                      minHeight: 6,
-                      backgroundColor: accent.withValues(alpha: 0.12),
-                      valueColor: AlwaysStoppedAnimation<Color>(accent),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              children: [
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: mutedColor,
-                  size: 24,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Управление',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: mutedColor,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ── Night guard card ────────────────────────────────────────────────────
 
@@ -2401,18 +2252,6 @@ class _DeviceActionsCard extends StatelessWidget {
                   color: const Color(0xFFFFD54F),
                   onTap: () => context.push(
                     '/maintenance/$deviceId',
-                    extra: {'name': deviceName},
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ActionBtn(
-                  icon: Icons.battery_charging_full_rounded,
-                  label: 'АКБ',
-                  color: const Color(0xFF39B86D),
-                  onTap: () => context.push(
-                    '/battery/$deviceId',
                     extra: {'name': deviceName},
                   ),
                 ),
