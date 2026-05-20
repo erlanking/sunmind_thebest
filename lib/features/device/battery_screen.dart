@@ -1,6 +1,105 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:sunmind_thebest/core/api/api_service.dart';
 import 'package:sunmind_thebest/core/services/haptic_service.dart';
+
+// ── Battery tab (standalone page for bottom nav) ──────────────────────
+
+class BatteryTabScreen extends StatefulWidget {
+  const BatteryTabScreen({super.key});
+
+  @override
+  State<BatteryTabScreen> createState() => _BatteryTabScreenState();
+}
+
+class _BatteryTabScreenState extends State<BatteryTabScreen> {
+  final ApiService _api = ApiService();
+  List<Map<String, dynamic>> _devices = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final list = await _api.getDevices();
+      if (mounted) setState(() => _devices = list);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF0D0F14) : const Color(0xFFF6F7FB);
+    final textColor = isDark ? Colors.white : const Color(0xFF161A22);
+    final mutedColor = isDark ? Colors.white60 : const Color(0xFF6D7481);
+
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: bg,
+        body: const Center(child: CircularProgressIndicator(color: _kA2)),
+      );
+    }
+
+    if (_devices.isEmpty) {
+      return Scaffold(
+        backgroundColor: bg,
+        appBar: AppBar(
+          backgroundColor: bg,
+          elevation: 0,
+          title: Text(
+            'battery.title'.tr(),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: textColor,
+            ),
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.battery_unknown_rounded, size: 64, color: mutedColor),
+              const SizedBox(height: 16),
+              Text(
+                'home.no_devices'.tr(),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: textColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'device.no_devices_add'.tr(),
+                style: TextStyle(color: mutedColor, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              TextButton.icon(
+                onPressed: _loadDevices,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text('common.refresh'.tr()),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Always show the first device directly — no selection screen
+    final d = _devices.first;
+    final rawId = (d['deviceId'] ?? d['id'] ?? '').toString();
+    final id = rawId == 'SMP-0001' ? 'SMP-0002' : rawId;
+    return BatteryScreen(deviceId: id);
+  }
+}
 
 const _kA1 = Color(0xFFFFD54F);
 const _kA2 = Color(0xFFFF9F43);
@@ -102,8 +201,8 @@ class _BatteryScreenState extends State<BatteryScreen> {
       setState(() => _isCharging = prev);
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет.'
-            : 'Не удалось изменить режим зарядки.',
+            ? 'errors.internet_short'.tr()
+            : 'errors.charge_mode'.tr(),
       );
     } finally {
       if (mounted) setState(() => _chargingLoading = false);
@@ -126,8 +225,8 @@ class _BatteryScreenState extends State<BatteryScreen> {
       setState(() => _powerSource = prev);
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет.'
-            : 'Не удалось переключить источник питания.',
+            ? 'errors.internet_short'.tr()
+            : 'errors.power_source'.tr(),
       );
     } finally {
       if (mounted) setState(() => _sourceLoading = false);
@@ -149,15 +248,15 @@ class _BatteryScreenState extends State<BatteryScreen> {
       HapticService.success();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Настройки АКБ сохранены')),
+          SnackBar(content: Text('battery.settings_saved'.tr())),
         );
       }
     } catch (e) {
       if (!mounted) return;
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет.'
-            : 'Не удалось сохранить настройки.',
+            ? 'errors.internet_short'.tr()
+            : 'errors.save_settings'.tr(),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -200,7 +299,7 @@ class _BatteryScreenState extends State<BatteryScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'АКБ — ${widget.deviceName ?? widget.deviceId}',
+          'battery.title'.tr(),
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -216,107 +315,117 @@ class _BatteryScreenState extends State<BatteryScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _kA2))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              child: Column(
-                children: [
-                  // Hero battery card
-                  _HeroBatteryCard(
-                    percent: _batteryPercent,
-                    voltage: _batteryVoltage,
-                    isCharging: _isCharging,
-                    powerSource: _powerSource,
-                    batteryColor: _batteryColor,
-                    batteryIcon: _batteryIcon,
-                    panelColor: panelColor,
-                    textColor: textColor,
-                    mutedColor: mutedColor,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Mode selector
-                  _ModeSelector(
-                    mode: _chargeMode,
-                    panelColor: panelColor,
-                    textColor: textColor,
-                    mutedColor: mutedColor,
-                    onChanged: (m) => setState(() => _chargeMode = m),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Manual mode content
-                  if (_chargeMode == 'manual') ...[
-                    _PowerSourceCard(
-                      powerSource: _powerSource,
-                      loading: _sourceLoading,
-                      batteryPercent: _batteryPercent,
-                      panelColor: panelColor,
-                      textColor: textColor,
-                      mutedColor: mutedColor,
-                      onChanged: _setPowerSource,
+          : Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      16 + MediaQuery.of(context).padding.bottom,
                     ),
-                    const SizedBox(height: 16),
-                    _ChargingToggleCard(
-                      isCharging: _isCharging,
-                      loading: _chargingLoading,
-                      batteryPercent: _batteryPercent,
-                      panelColor: panelColor,
-                      textColor: textColor,
-                      mutedColor: mutedColor,
-                      onChanged: _setCharging,
-                    ),
-                  ],
-
-                  // Auto mode content
-                  if (_chargeMode == 'auto') ...[
-                    _AutoModeCard(
-                      lowThreshold: _lowThreshold,
-                      fullThreshold: _fullThreshold,
-                      autoSolar: _autoSolar,
-                      panelColor: panelColor,
-                      textColor: textColor,
-                      mutedColor: mutedColor,
-                      onLowChanged: (v) => setState(() => _lowThreshold = v),
-                      onFullChanged: (v) => setState(() => _fullThreshold = v),
-                      onSolarChanged: (v) => setState(() => _autoSolar = v),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: _saving ? null : _saveAutoSettings,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _kA2,
-                          foregroundColor: const Color(0xFF1A0F00),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
+                    child: Column(
+                      children: [
+                        _HeroBatteryCard(
+                          percent: _batteryPercent,
+                          voltage: _batteryVoltage,
+                          isCharging: _isCharging,
+                          powerSource: _powerSource,
+                          batteryColor: _batteryColor,
+                          batteryIcon: _batteryIcon,
+                          panelColor: panelColor,
+                          textColor: textColor,
+                          mutedColor: mutedColor,
                         ),
-                        child: _saving
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFF1A0F00),
+                        const SizedBox(height: 16),
+                        _ModeSelector(
+                          mode: _chargeMode,
+                          panelColor: panelColor,
+                          textColor: textColor,
+                          mutedColor: mutedColor,
+                          onChanged: (m) => setState(() => _chargeMode = m),
+                        ),
+                        const SizedBox(height: 16),
+                        if (_chargeMode == 'manual') ...[
+                          _PowerSourceCard(
+                            powerSource: _powerSource,
+                            loading: _sourceLoading,
+                            batteryPercent: _batteryPercent,
+                            panelColor: panelColor,
+                            textColor: textColor,
+                            mutedColor: mutedColor,
+                            onChanged: _setPowerSource,
+                          ),
+                          const SizedBox(height: 16),
+                          _ChargingToggleCard(
+                            isCharging: _isCharging,
+                            loading: _chargingLoading,
+                            batteryPercent: _batteryPercent,
+                            panelColor: panelColor,
+                            textColor: textColor,
+                            mutedColor: mutedColor,
+                            onChanged: _setCharging,
+                          ),
+                        ],
+                        if (_chargeMode == 'auto')
+                          _AutoModeCard(
+                            lowThreshold: _lowThreshold,
+                            fullThreshold: _fullThreshold,
+                            autoSolar: _autoSolar,
+                            panelColor: panelColor,
+                            textColor: textColor,
+                            mutedColor: mutedColor,
+                            onLowChanged: (v) => setState(() => _lowThreshold = v),
+                            onFullChanged: (v) => setState(() => _fullThreshold = v),
+                            onSolarChanged: (v) => setState(() => _autoSolar = v),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                // ── Фиксированная кнопка «Сохранить» для авто-режима ──
+                if (_chargeMode == 'auto')
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      16 + MediaQuery.of(context).padding.bottom,
+                    ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: _saving ? null : _saveAutoSettings,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _kA2,
+                            foregroundColor: const Color(0xFF1A0F00),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: _saving
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF1A0F00),
+                                  ),
+                                )
+                              : Text(
+                                  'battery.save_mode'.tr(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
                                 ),
-                              )
-                            : const Text(
-                                'Сохранить настройки',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
-                                ),
-                              ),
+                        ),
                       ),
                     ),
-                  ],
-                ],
-              ),
+              ],
             ),
     );
   }
@@ -408,7 +517,7 @@ class _HeroBatteryCard extends StatelessWidget {
                     Row(
                       children: [
                         _StatusChip(
-                          label: isCharging ? 'Заряжается' : 'Разряжается',
+                          label: isCharging ? 'battery.charging'.tr() : 'battery.discharging'.tr(),
                           color: isCharging ? _kGreen : mutedColor,
                           icon: isCharging
                               ? Icons.bolt_rounded
@@ -416,7 +525,7 @@ class _HeroBatteryCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         _StatusChip(
-                          label: powerSource == 'ac' ? 'Розетка' : 'АКБ',
+                          label: powerSource == 'ac' ? 'battery.socket'.tr() : 'battery.akb'.tr(),
                           color: powerSource == 'ac' ? _kBlue : batteryColor,
                           icon: powerSource == 'ac'
                               ? Icons.power_rounded
@@ -469,10 +578,10 @@ class _HeroBatteryCard extends StatelessWidget {
   }
 
   String _batteryLabel(int p) {
-    if (p <= 20) return 'Низкий заряд';
-    if (p <= 50) return 'Средний заряд';
-    if (p >= 90) return 'Полный заряд';
-    return 'Нормальный заряд';
+    if (p <= 20) return 'battery.low_charge'.tr();
+    if (p <= 50) return 'battery.medium_charge'.tr();
+    if (p >= 90) return 'battery.full_charge'.tr();
+    return 'battery.normal_charge'.tr();
   }
 }
 
@@ -545,7 +654,7 @@ class _ModeSelector extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'РЕЖИМ УПРАВЛЕНИЯ АКБ',
+            'battery.mode_section'.tr(),
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -558,9 +667,9 @@ class _ModeSelector extends StatelessWidget {
             children: [
               Expanded(
                 child: _ModeBtn(
-                  emoji: '✋',
-                  label: 'Ручной',
-                  hint: 'Управляй сам',
+                  icon: Icons.tune_rounded,
+                  label: 'battery.mode_manual'.tr(),
+                  hint: 'battery.mode_manual_hint'.tr(),
                   selected: mode == 'manual',
                   onTap: () => onChanged('manual'),
                 ),
@@ -568,9 +677,9 @@ class _ModeSelector extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _ModeBtn(
-                  emoji: '🤖',
-                  label: 'Авто',
-                  hint: 'Умная зарядка',
+                  icon: Icons.autorenew_rounded,
+                  label: 'battery.mode_auto'.tr(),
+                  hint: 'battery.mode_auto_hint'.tr(),
                   selected: mode == 'auto',
                   onTap: () => onChanged('auto'),
                 ),
@@ -584,14 +693,14 @@ class _ModeSelector extends StatelessWidget {
 }
 
 class _ModeBtn extends StatelessWidget {
-  final String emoji;
+  final IconData icon;
   final String label;
   final String hint;
   final bool selected;
   final VoidCallback onTap;
 
   const _ModeBtn({
-    required this.emoji,
+    required this.icon,
     required this.label,
     required this.hint,
     required this.selected,
@@ -600,11 +709,16 @@ class _ModeBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final idleTextColor = isDark ? Colors.white70 : const Color(0xFF6D7481);
+    final idleBorder = isDark ? Colors.white24 : const Color(0xFFD0D5E0);
+    final idleBg = isDark ? Colors.transparent : const Color(0xFFF2F4F8);
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
         decoration: BoxDecoration(
           gradient: selected
               ? const LinearGradient(
@@ -614,22 +728,26 @@ class _ModeBtn extends StatelessWidget {
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: selected ? null : Colors.transparent,
+          color: selected ? null : idleBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? Colors.transparent : Colors.white24,
+            color: selected ? Colors.transparent : idleBorder,
           ),
         ),
         child: Column(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 28)),
-            const SizedBox(height: 6),
+            Icon(
+              icon,
+              size: 30,
+              color: selected ? const Color(0xFF1A0F00) : idleTextColor,
+            ),
+            const SizedBox(height: 8),
             Text(
               label,
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: selected ? const Color(0xFF1A0F00) : Colors.white,
+                color: selected ? const Color(0xFF1A0F00) : idleTextColor,
               ),
             ),
             const SizedBox(height: 2),
@@ -639,7 +757,7 @@ class _ModeBtn extends StatelessWidget {
                 fontSize: 11,
                 color: selected
                     ? const Color(0xFF1A0F00).withValues(alpha: 0.6)
-                    : Colors.white38,
+                    : idleTextColor.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -686,7 +804,7 @@ class _PowerSourceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'ИСТОЧНИК ПИТАНИЯ',
+            'battery.source_section'.tr(),
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -742,7 +860,7 @@ class _PowerSourceCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Аккумулятор',
+                                'battery.akb'.tr(),
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -817,7 +935,7 @@ class _PowerSourceCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                'Розетка',
+                                'battery.socket'.tr(),
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -828,7 +946,7 @@ class _PowerSourceCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'Сеть 220V',
+                                'battery.socket_220v'.tr(),
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -909,7 +1027,7 @@ class _ChargingToggleCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'ЗАРЯДКА',
+                  'battery.charging_section'.tr(),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -920,10 +1038,10 @@ class _ChargingToggleCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   isCharging
-                      ? 'Идёт зарядка АКБ'
+                      ? 'battery.charging_active'.tr()
                       : isFull
-                          ? 'АКБ заряжен полностью'
-                          : 'Зарядка выключена',
+                          ? 'battery.battery_full'.tr()
+                          : 'battery.charging_off'.tr(),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -989,7 +1107,7 @@ class _AutoModeCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'НАСТРОЙКИ АВТО-РЕЖИМА',
+            'battery.auto_mode_settings'.tr(),
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1020,7 +1138,7 @@ class _AutoModeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Авто-зарядка от солнца',
+                      'battery.auto_solar'.tr(),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -1029,7 +1147,7 @@ class _AutoModeCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Заряжать АКБ при наличии солнца',
+                      'battery.auto_solar_hint'.tr(),
                       style: TextStyle(fontSize: 11, color: mutedColor),
                     ),
                   ],
@@ -1058,7 +1176,7 @@ class _AutoModeCard extends StatelessWidget {
                       color: _kRed, size: 18),
                   const SizedBox(width: 8),
                   Text(
-                    'Порог низкого заряда',
+                    'battery.low_threshold'.tr(),
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -1087,7 +1205,7 @@ class _AutoModeCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Переключить на розетку когда АКБ ниже этого уровня',
+            'battery.low_threshold_hint'.tr(),
             style: TextStyle(fontSize: 11, color: mutedColor),
           ),
           SliderTheme(
@@ -1123,7 +1241,7 @@ class _AutoModeCard extends StatelessWidget {
                       color: _kGreen, size: 18),
                   const SizedBox(width: 8),
                   Text(
-                    'Порог полного заряда',
+                    'battery.full_threshold'.tr(),
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -1152,7 +1270,7 @@ class _AutoModeCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Остановить зарядку когда АКБ достигнет этого уровня',
+            'battery.full_threshold_hint'.tr(),
             style: TextStyle(fontSize: 11, color: mutedColor),
           ),
           SliderTheme(
@@ -1193,7 +1311,7 @@ class _AutoModeCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'В авто-режиме контроллер сам переключает источник питания и управляет зарядкой по заданным порогам.',
+                    'battery.auto_mode_info'.tr(),
                     style: TextStyle(
                       fontSize: 11,
                       color: mutedColor,

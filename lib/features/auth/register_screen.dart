@@ -65,14 +65,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       HapticService.error();
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Пароли не совпадают')));
+      ).showSnackBar(SnackBar(content: Text('auth.passwords_mismatch'.tr())));
       return;
     }
 
     if (password.length < 6) {
       HapticService.error();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Пароль должен быть не менее 6 символов')),
+        SnackBar(content: Text('auth.password_min_6'.tr())),
       );
       return;
     }
@@ -94,7 +94,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       HapticService.error();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка регистрации: ${e.toString()}')),
+        SnackBar(content: Text('errors.login_failed'.tr())),
       );
     }
 
@@ -122,7 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          'Регистрация',
+          'auth.register'.tr(),
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w800,
@@ -138,7 +138,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Создать аккаунт',
+                'auth.create_account'.tr(),
                 style: TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w800,
@@ -148,7 +148,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Создайте профиль для управления системой SunMind.',
+                'auth.profile_create_hint'.tr(),
                 style: TextStyle(fontSize: 14, color: muted),
               ),
               const SizedBox(height: 24),
@@ -165,8 +165,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   children: [
                     TextField(
                       controller: _nameController,
-                      decoration: const InputDecoration(
-                        hintText: 'Имя',
+                      decoration: InputDecoration(
+                        hintText: 'auth.name'.tr(),
                         prefixIcon: Icon(Icons.person_outline, size: 20),
                       ),
                     ),
@@ -185,7 +185,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       obscureText: _obscureText,
                       onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
-                        hintText: 'Пароль',
+                        hintText: 'auth.password'.tr(),
                         prefixIcon: const Icon(Icons.lock_outline, size: 20),
                         suffixIcon: IconButton(
                           onPressed: () =>
@@ -234,17 +234,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       // Requirements
                       _PwRequirement(
                         met: pw.length >= 8,
-                        label: 'Минимум 8 символов',
+                        label: 'auth.min_8_chars'.tr(),
                         isDark: isDark,
                       ),
                       _PwRequirement(
                         met: pw.contains(RegExp(r'[0-9]')),
-                        label: 'Содержит цифру',
+                        label: 'auth.contains_digit'.tr(),
                         isDark: isDark,
                       ),
                       _PwRequirement(
                         met: pw.contains(RegExp(r'[A-Z]')),
-                        label: 'Заглавная буква',
+                        label: 'auth.uppercase_letter'.tr(),
                         isDark: isDark,
                       ),
                     ],
@@ -254,7 +254,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _confirmPasswordController,
                       obscureText: _obscureText,
                       decoration: InputDecoration(
-                        hintText: 'Подтверждение пароля',
+                        hintText: 'auth.confirm_password'.tr(),
                         prefixIcon: const Icon(Icons.lock_outline, size: 20),
                         suffixIcon: IconButton(
                           onPressed: () =>
@@ -299,7 +299,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'Согласен с условиями использования',
+                              'auth.agree_terms'.tr(),
                               style: TextStyle(
                                 fontSize: 13,
                                 color: muted,
@@ -344,9 +344,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text(
-                                'Создать аккаунт',
-                                style: TextStyle(
+                            : Text(
+                                'auth.create_account'.tr(),
+                                style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF1A0F00),
@@ -364,11 +364,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onTap: () => context.go('/login'),
                   child: RichText(
                     text: TextSpan(
-                      text: 'Уже есть аккаунт? ',
+                      text: '${'auth.have_account'.tr()} ',
                       style: TextStyle(color: muted, fontSize: 14),
                       children: [
                         TextSpan(
-                          text: 'Войти',
+                          text: 'auth.login'.tr(),
                           style: TextStyle(
                             color: kA2,
                             fontWeight: FontWeight.w700,

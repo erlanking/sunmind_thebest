@@ -97,12 +97,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: isDark ? const Color(0xFF112135) : Colors.white,
-        title: const Text('Тариф на электроэнергию'),
+        title: Text('analytics.tariff'.tr()),
         content: TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            suffixText: 'сом/кВт·ч',
+          decoration: InputDecoration(
+            suffixText: 'analytics.som_per_kwh'.tr(),
             hintText: '0.77',
           ),
           autofocus: true,
@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Отмена'),
+            child: Text('common.cancel'.tr()),
           ),
           TextButton(
             onPressed: () async {
@@ -123,7 +123,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            child: const Text('Сохранить'),
+            child: Text('common.save'.tr()),
           ),
         ],
       ),
@@ -151,8 +151,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _showOfflineSnapshotNotice = true);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Не удалось загрузить профиль. Проверьте интернет.'),
+          SnackBar(
+            content: Text('errors.load_profile'.tr()),
           ),
         );
       }
@@ -300,7 +300,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось выйти. Попробуйте ещё раз.')),
+        SnackBar(content: Text('errors.logout'.tr())),
       );
     } finally {
       if (mounted) {
@@ -331,7 +331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final bg = isDark ? const Color(0xFF0B0B0D) : const Color(0xFFF6F5F1);
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(title: Text('profile'.tr()), centerTitle: true),
+      appBar: AppBar(title: Text('language'.tr()), centerTitle: true),
       body: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(16, 16, 16, contentBottomPadding),
         child: Column(
@@ -388,7 +388,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _name ?? 'Профиль',
+                                _name ?? 'profile.title'.tr(),
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
@@ -398,7 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                _email ?? 'email не указан',
+                                _email ?? 'profile.no_email'.tr(),
                                 style: TextStyle(
                                   color: mutedColor,
                                   fontSize: 13,
@@ -438,7 +438,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  _MiniBadge(text: 'Умный дом'),
+                                  _MiniBadge(text: 'profile.smart_home'.tr()),
                                 ],
                               ),
                             ],
@@ -448,36 +448,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
 
-            const SizedBox(height: 12),
-
-            // KPI tiles
-            Row(
-              children: [
-                _KpiTile(
-                  label: 'ПАНЕЛИ',
-                  value: '14',
-                  icon: Icons.lightbulb_outline_rounded,
-                  isDark: isDark,
-                  cardColor: cardColor,
-                ),
-                const SizedBox(width: 10),
-                _KpiTile(
-                  label: 'ЗОНЫ',
-                  value: '6',
-                  icon: Icons.dashboard_outlined,
-                  isDark: isDark,
-                  cardColor: cardColor,
-                ),
-                const SizedBox(width: 10),
-                _KpiTile(
-                  label: 'kWh/МЕС',
-                  value: (_tariff > 0 ? 58.0 : 0.0).toStringAsFixed(0),
-                  icon: Icons.bolt_outlined,
-                  isDark: isDark,
-                  cardColor: cardColor,
-                ),
-              ],
-            ),
             if (_showOfflineSnapshotNotice) ...[
               const SizedBox(height: 12),
               Container(
@@ -507,7 +477,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Нет интернета. Показаны последние сохранённые данные.',
+                        'home.offline_data'.tr(),
                         style: TextStyle(
                           color: textColor,
                           fontSize: 12.5,
@@ -577,7 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _ActionTile(
                   icon: Icons.language,
-                  title: 'Язык',
+                  title: 'profile.language'.tr(),
                   subtitle: selectedLanguage,
                   iconColor: mutedColor,
                   textColor: textColor,
@@ -587,8 +557,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _ActionTile(
                   icon: Icons.electric_bolt_outlined,
-                  title: 'Тариф эл-ва',
-                  subtitle: '${_tariff.toStringAsFixed(2)} сом/кВт·ч',
+                  title: 'analytics.tariff_short'.tr(),
+                  subtitle: '${_tariff.toStringAsFixed(2)} ${'analytics.som_per_kwh'.tr()}',
                   iconColor: mutedColor,
                   textColor: textColor,
                   subtitleColor: mutedColor,
@@ -597,7 +567,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _ActionTile(
                   icon: Icons.notifications_outlined,
-                  title: 'Уведомления',
+                  title: 'profile.notifications'.tr(),
                   iconColor: mutedColor,
                   textColor: textColor,
                   onTap: () => context.push('/notification-settings'),
@@ -605,7 +575,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _ActionTile(
                   icon: Icons.wifi,
-                  title: 'Настройка Wi-Fi',
+                  title: 'wifi.setup'.tr(),
                   iconColor: mutedColor,
                   textColor: textColor,
                   onTap: () => context.push('/wifi-setup'),
@@ -651,7 +621,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.logout),
-                label: Text(_loggingOut ? 'Выход...' : 'logout'.tr()),
+                label: Text(_loggingOut ? 'common.logout_loading'.tr() : 'logout'.tr()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.redAccent.withValues(alpha: 0.15),
                   foregroundColor: Colors.redAccent,
@@ -787,70 +757,6 @@ class _ActionTile extends StatelessWidget {
               ),
             const SizedBox(width: 8),
             Icon(Icons.chevron_right, color: subtitleColor ?? textColor),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _KpiTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool isDark;
-  final Color cardColor;
-
-  const _KpiTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.isDark,
-    required this.cardColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? const Color(0xFF26262D)
-                : const Color(0xFFE8E5DE),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: kA2,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: isDark ? Colors.white : const Color(0xFF1A1A1E),
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: isDark ? const Color(0xFF6E6E75) : const Color(0xFF8E8E93),
-                letterSpacing: 0.8,
-              ),
-            ),
           ],
         ),
       ),

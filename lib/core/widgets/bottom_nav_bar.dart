@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 // Sunrise gradient constants
@@ -40,24 +41,31 @@ class AppBottomNavBar extends StatelessWidget {
           children: [
             _NavPill(
               icon: Icons.home_rounded,
-              label: 'Главная',
+              label: 'nav.home'.tr(),
               isSelected: currentIndex == 0,
               isDark: isDark,
               onTap: () => onTap?.call(0),
             ),
             _NavPill(
-              icon: Icons.bar_chart_rounded,
-              label: 'Аналитика',
+              icon: Icons.battery_charging_full_rounded,
+              label: 'nav.battery'.tr(),
               isSelected: currentIndex == 1,
               isDark: isDark,
               onTap: () => onTap?.call(1),
             ),
             _NavPill(
-              icon: Icons.person_rounded,
-              label: 'Профиль',
+              icon: Icons.bar_chart_rounded,
+              label: 'nav.analytics'.tr(),
               isSelected: currentIndex == 2,
               isDark: isDark,
               onTap: () => onTap?.call(2),
+            ),
+            _NavPill(
+              icon: Icons.person_rounded,
+              label: 'nav.profile'.tr(),
+              isSelected: currentIndex == 3,
+              isDark: isDark,
+              onTap: () => onTap?.call(3),
             ),
           ],
         ),

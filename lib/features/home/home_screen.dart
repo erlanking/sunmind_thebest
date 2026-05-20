@@ -265,10 +265,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _zonesError = null;
           _showOfflineSnapshotNotice = true;
         } else if (ApiService.isOfflineError(e)) {
-          _zonesError =
-              'Нет интернета. Подключитесь к сети, чтобы загрузить данные.';
+          _zonesError = 'errors.no_internet_data'.tr();
         } else {
-          _zonesError = 'Не удалось загрузить панели и зоны';
+          _zonesError = 'errors.load_zones'.tr();
         }
       });
     } finally {
@@ -376,8 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text(
             ApiService.isOfflineError(e)
-                ? 'Включите интернет, чтобы управлять устройствами.'
-                : 'Не удалось изменить состояние. Проверьте подключение устройства.',
+                ? 'errors.internet'.tr()
+                : 'errors.toggle_state'.tr(),
           ),
         ),
       );
@@ -412,8 +411,8 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text(
             ApiService.isOfflineError(e)
-                ? 'Включите интернет, чтобы управлять устройствами.'
-                : 'Не удалось включить/выключить. Устройство не отвечает.',
+                ? 'errors.internet'.tr()
+                : 'errors.toggle'.tr(),
           ),
         ),
       );
@@ -445,7 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _fetchZones(showLoading: false);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Панель перенесена в "$zoneName"')),
+        SnackBar(content: Text('zone.panel_moved_to'.tr(namedArgs: {'zone': zoneName}))),
       );
     } catch (e) {
       if (previousAssignment == null) {
@@ -460,8 +459,8 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text(
             ApiService.isOfflineError(e)
-                ? 'Включите интернет, чтобы управлять устройствами.'
-                : 'Не удалось переместить панель в зону. Попробуйте ещё раз.',
+                ? 'errors.internet'.tr()
+                : 'errors.move_to_zone'.tr(),
           ),
         ),
       );
@@ -579,16 +578,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Подтвердите перенос'),
-            content: Text('Переместить "$deviceName" в "$targetName"?'),
+            title: Text('zone.confirm_move'.tr()),
+            content: Text('zone.move_to_zone_confirm'.tr(namedArgs: {'name': deviceName, 'zone': targetName})),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Отмена'),
+                child: Text('common.cancel'.tr()),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Переместить'),
+                child: Text('zone.move_panel'.tr()),
               ),
             ],
           ),
@@ -733,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Панель добавлена в зону "$zoneName"')),
+        SnackBar(content: Text('zone.panel_added_to_zone'.tr(namedArgs: {'zone': zoneName}))),
       );
     }
   }
@@ -1122,10 +1121,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final unreadCount = context.watch<NotificationProvider>().unreadCount;
     final hour = DateTime.now().hour;
     final greeting = hour < 12
-        ? 'Доброе утро,'
+        ? 'home.good_morning'.tr()
         : hour < 17
-        ? 'Добрый день,'
-        : 'Добрый вечер,';
+        ? 'home.good_afternoon'.tr()
+        : 'home.good_evening'.tr();
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -1268,10 +1267,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     !canControlAll
-                        ? 'Включить всё'
+                        ? 'home.turn_on_all'.tr()
                         : anyOn
-                        ? 'Выключить всё'
-                        : 'Включить всё',
+                        ? 'home.turn_off_all'.tr()
+                        : 'home.turn_on_all'.tr(),
                     style: TextStyle(
                       color: active
                           ? const Color(0xFF1A0F00)
@@ -1284,10 +1283,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 4),
                   Text(
                     !canControlAll
-                        ? 'Добавьте первую панель'
+                        ? 'home.add_first_panel'.tr()
                         : anyOn
-                        ? 'Освещение включено'
-                        : 'Освещение выключено',
+                        ? 'device.lighting_on'.tr()
+                        : 'device.lighting_off'.tr(),
                     style: TextStyle(
                       color: active
                           ? const Color(0xFF1A0F00).withValues(alpha: .65)
@@ -1342,7 +1341,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Зоны и панели',
+              'home.zones_and_panels'.tr(),
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -1369,9 +1368,9 @@ class _HomeScreenState extends State<HomeScreen> {
               color: _accent,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Text(
-              'Добавить',
-              style: TextStyle(
+            child: Text(
+              'common.add'.tr(),
+              style: const TextStyle(
                 color: Colors.black,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
@@ -1404,7 +1403,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Нет интернета. Показаны последние сохранённые данные.',
+              'home.offline_data'.tr(),
               style: TextStyle(
                 color: _textColor(context),
                 fontSize: 12.5,
@@ -1438,7 +1437,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: _fetchZones,
-            child: const Text('Повторить'),
+            child: Text('common.retry'.tr()),
           ),
         ],
       );
@@ -1498,13 +1497,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Пока нет панелей',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          Text(
+            'home.no_panels'.tr(),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           Text(
-            'Добавьте панель, затем объединяйте несколько панелей в одну зону и управляйте ими как одной группой.',
+            'home.add_panel_hint'.tr(),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: _mutedColor(context),
@@ -1516,7 +1515,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ElevatedButton.icon(
             onPressed: _scanAndAddDevice,
             icon: const Icon(Icons.add),
-            label: const Text('Добавить панель'),
+            label: Text('home.add_panel'.tr()),
             style: ElevatedButton.styleFrom(
               backgroundColor: _accent,
               foregroundColor: Colors.black,
@@ -1895,7 +1894,7 @@ class _ZoneCardState extends State<_ZoneCard> {
 
                   // Zone count / type
                   Text(
-                    isZoneCard ? '$deviceCount устройств' : 'Устройство',
+                    isZoneCard ? '$deviceCount ${'device.devices'.tr()}' : 'device.device'.tr(),
                     style: TextStyle(
                       color: on ? color : mutedColor,
                       fontSize: 11,
@@ -1927,7 +1926,7 @@ class _ZoneCardState extends State<_ZoneCard> {
                           color: online
                               ? const Color(0xFF30D158)
                               : Colors.redAccent,
-                          label: online ? 'Online' : 'Offline',
+                          label: online ? 'common.online'.tr() : 'common.offline'.tr(),
                           mutedColor: mutedColor,
                           isDark: isDark,
                         ),
@@ -1936,7 +1935,7 @@ class _ZoneCardState extends State<_ZoneCard> {
                       Flexible(
                         child: _Dot(
                           color: motion ? const Color(0xFFFFD54F) : mutedColor,
-                          label: motion ? 'Движ.' : 'Тихо',
+                          label: motion ? 'device.motion_short'.tr() : 'notifications_screen.silent'.tr(),
                           mutedColor: mutedColor,
                           isDark: isDark,
                         ),
@@ -1984,9 +1983,9 @@ class _ZoneCardState extends State<_ZoneCard> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Отпустите',
-                        style: TextStyle(
+                      Text(
+                        'common.release'.tr(),
+                        style: const TextStyle(
                           color: _accent,
                           fontWeight: FontWeight.w700,
                           fontSize: 13,

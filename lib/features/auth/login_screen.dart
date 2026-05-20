@@ -74,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ).showSnackBar(
         SnackBar(
           content: Text(
-            _authController.errorMessage ?? 'Ошибка входа: ${e.toString()}',
+            _authController.errorMessage ?? 'errors.login_failed'.tr(),
           ),
         ),
       );
@@ -100,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _authController.errorMessage ?? 'Не удалось войти через Google. Попробуйте ещё раз.',
+            _authController.errorMessage ?? 'errors.google_login'.tr(),
           ),
         ),
       );
@@ -163,7 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 36),
               Text(
-                'С возвращением',
+                'auth.welcome_back'.tr(),
                 style: TextStyle(
                   fontSize: 30,
                   fontWeight: FontWeight.w800,
@@ -173,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Войдите и управляйте освещением.',
+                'onboarding.login_hint'.tr(),
                 style: TextStyle(fontSize: 14, color: muted),
               ),
               const SizedBox(height: 28),
@@ -201,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _FieldLabel('Пароль', text),
+                    _FieldLabel('auth.password'.tr(), text),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _passwordController,
@@ -226,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       alignment: Alignment.centerRight,
                       child: TextButton(
                         onPressed: () {},
-                        child: const Text('Забыли пароль?'),
+                        child: Text('auth.forgot_password'.tr()),
                       ),
                     ),
                     // Sunrise gradient login button
@@ -261,9 +261,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text(
-                                'Войти',
-                                style: TextStyle(
+                            : Text(
+                                'auth.login'.tr(),
+                                style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF1A0F00),
@@ -284,7 +284,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Text(
-                      'или',
+                      'auth.or'.tr(),
                       style: TextStyle(color: muted, fontSize: 13),
                     ),
                   ),
@@ -298,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
               OutlinedButton.icon(
                 onPressed: isLoading ? null : _loginWithGoogle,
                 icon: const Icon(Icons.g_mobiledata, size: 26),
-                label: const Text('Continue with Google'),
+                label: Text('auth.login_with_google'.tr()),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 52),
                   side: BorderSide(color: border),
@@ -338,11 +338,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   onTap: () => context.go('/register'),
                   child: RichText(
                     text: TextSpan(
-                      text: 'Нет аккаунта? ',
+                      text: '${'auth.no_account'.tr()} ',
                       style: TextStyle(color: muted, fontSize: 14),
                       children: [
                         TextSpan(
-                          text: 'Зарегистрироваться',
+                          text: 'auth.register_action'.tr(),
                           style: TextStyle(
                             color: kA2,
                             fontWeight: FontWeight.w700,

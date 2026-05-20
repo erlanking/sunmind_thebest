@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sunmind_thebest/core/api/api_service.dart';
@@ -55,7 +56,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   String get itemKind => (widget.roomData?['kind'] ?? 'device').toString();
   bool get isZone => itemKind == 'zone';
-  String get displayName => (widget.roomData?['name'] ?? 'Панель').toString();
+  String get displayName => (widget.roomData?['name'] ?? 'device.panel'.tr()).toString();
   String get displayEmoji =>
       (widget.roomData?['emoji'] ?? (isZone ? '🏠' : '💡')).toString();
 
@@ -219,34 +220,13 @@ class _RoomScreenState extends State<RoomScreen> {
     _recomputeFromDevices();
   }
 
-  Future<bool> _confirmPanelMove({
-    required String panelName,
-    required String targetName,
-  }) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Подтвердите перенос'),
-            content: Text('Переместить "$panelName" в "$targetName"?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Отмена'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Переместить'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
   Future<void> _moveDeviceOutsideZone(_RoomDraggedPanel payload) async {
     if (_moveLoading) return;
     final deviceId = payload.deviceId.trim();
-    if (deviceId.isEmpty || _currentZoneId.isEmpty) return;
+    if (deviceId.isEmpty || _currentZoneId.isEmpty) {
+      _showError('errors.zone_not_found'.tr());
+      return;
+    }
 
     setState(() => _moveLoading = true);
     try {
@@ -256,14 +236,14 @@ class _RoomScreenState extends State<RoomScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Панель вынесена из зоны')));
+      ).showSnackBar(SnackBar(content: Text('zone.panel_moved_out'.tr())));
       HapticService.success();
     } catch (e) {
       if (!mounted) return;
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет, чтобы управлять устройствами.'
-            : 'Не удалось вынести панель из зоны.',
+            ? 'errors.internet'.tr()
+            : 'errors.move_panel'.tr(),
       );
     } finally {
       if (mounted) setState(() => _moveLoading = false);
@@ -275,24 +255,24 @@ class _RoomScreenState extends State<RoomScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Новая зона'),
+        title: Text('zone.new_zone'.tr()),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Название зоны',
-            hintText: 'Например, Гостиная',
+          decoration: InputDecoration(
+            labelText: 'zone.zone_name'.tr(),
+            hintText: 'zone.zone_name_example'.tr(),
           ),
           onSubmitted: (_) => Navigator.of(ctx).pop(controller.text.trim()),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Отмена'),
+            child: Text('common.cancel'.tr()),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child: const Text('Создать'),
+            child: Text('common.create'.tr()),
           ),
         ],
       ),
@@ -300,6 +280,58 @@ class _RoomScreenState extends State<RoomScreen> {
     controller.dispose();
     final trimmed = name?.trim() ?? '';
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  Future<String?> _showDevicePicker() async {
+    if (_devices.length == 1) return _deviceId(_devices.first);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('zone.select_panel'.tr()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _devices.map((d) {
+            final id = _deviceId(d);
+            final name = (d['name'] ?? id).toString();
+            return ListTile(
+              leading: const Text('💡'),
+              title: Text(name),
+              onTap: () => Navigator.of(ctx).pop(id),
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('common.cancel'.tr()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleTapOutside() async {
+    if (_devices.isEmpty) return;
+    final deviceId = await _showDevicePicker();
+    if (deviceId == null || deviceId.isEmpty) return;
+    final device = _devices.firstWhere(
+      (d) => _deviceId(d) == deviceId,
+      orElse: () => {'deviceId': deviceId},
+    );
+    final name = (device['name'] ?? deviceId).toString();
+    await _moveDeviceOutsideZone(_RoomDraggedPanel(deviceId: deviceId, name: name));
+  }
+
+  Future<void> _handleTapNewZone() async {
+    if (_devices.isEmpty) return;
+    final deviceId = await _showDevicePicker();
+    if (deviceId == null || deviceId.isEmpty) return;
+    final device = _devices.firstWhere(
+      (d) => _deviceId(d) == deviceId,
+      orElse: () => {'deviceId': deviceId},
+    );
+    final name = (device['name'] ?? deviceId).toString();
+    await _moveDeviceToNewZone(_RoomDraggedPanel(deviceId: deviceId, name: name));
   }
 
   Future<void> _moveDeviceToNewZone(_RoomDraggedPanel payload) async {
@@ -323,14 +355,14 @@ class _RoomScreenState extends State<RoomScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Создана зона "$zoneName"')));
+      ).showSnackBar(SnackBar(content: Text('zone.zone_created_success'.tr(namedArgs: {'zone': zoneName}))));
       HapticService.success();
     } catch (e) {
       if (!mounted) return;
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет, чтобы управлять устройствами.'
-            : 'Не удалось создать зону и перенести панель.',
+            ? 'errors.internet'.tr()
+            : 'errors.create_zone'.tr(),
       );
     } finally {
       if (mounted) setState(() => _moveLoading = false);
@@ -370,8 +402,8 @@ class _RoomScreenState extends State<RoomScreen> {
       setState(() => isOn = previous);
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет, чтобы управлять устройствами.'
-            : 'Устройство не отвечает. Проверьте, включён ли ESP.',
+            ? 'errors.internet'.tr()
+            : 'errors.device_offline'.tr(),
       );
     } finally {
       if (mounted) setState(() => _powerLoading = false);
@@ -417,8 +449,8 @@ class _RoomScreenState extends State<RoomScreen> {
       setState(() => deviceMode = previous);
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет, чтобы управлять устройствами.'
-            : 'Не удалось сменить режим. Попробуйте ещё раз.',
+            ? 'errors.internet'.tr()
+            : 'errors.change_mode'.tr(),
       );
     } finally {
       if (mounted) setState(() => _modeLoading = false);
@@ -444,8 +476,8 @@ class _RoomScreenState extends State<RoomScreen> {
       setState(() => _deviceStates[deviceId] = currentOn);
       _showError(
         ApiService.isOfflineError(e)
-            ? 'Включите интернет, чтобы управлять устройствами.'
-            : 'Устройство не отвечает. Проверьте, включён ли ESP.',
+            ? 'errors.internet'.tr()
+            : 'errors.device_offline'.tr(),
       );
     } finally {
       if (mounted) setState(() => _deviceLoading.remove(deviceId));
@@ -465,8 +497,8 @@ class _RoomScreenState extends State<RoomScreen> {
       if (mounted) {
         _showError(
           ApiService.isOfflineError(e)
-              ? 'Включите интернет.'
-              : 'Не удалось изменить охранный режим.',
+              ? 'errors.internet_short'.tr()
+              : 'errors.night_guard'.tr(),
         );
       }
     } finally {
@@ -531,20 +563,20 @@ class _RoomScreenState extends State<RoomScreen> {
         await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: Text(isZone ? 'Удалить зону?' : 'Удалить панель?'),
+            title: Text(isZone ? 'zone.delete_zone_confirm'.tr() : 'zone.delete_device_confirm'.tr()),
             content: Text(
               isZone
-                  ? 'Зона исчезнет, а все панели останутся на главном экране как отдельные карточки.'
-                  : 'Панель будет удалена только у текущего пользователя. На базе устройство останется.',
+                  ? 'zone.delete_zone_hint'.tr()
+                  : 'zone.delete_device_hint'.tr(),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Отмена'),
+                child: Text('common.cancel'.tr()),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Удалить'),
+                child: Text('common.delete'.tr()),
               ),
             ],
           ),
@@ -604,18 +636,17 @@ class _RoomScreenState extends State<RoomScreen> {
             onDelete: _confirmDelete,
             textColor: textColor,
             isDark: isDark,
+            isZone: isZone,
           ),
         ],
       ),
       body: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) {
-            _closeScreen();
-          }
+          if (!didPop) _closeScreen();
         },
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: Column(
             children: [
               // ── Main power card ──
@@ -747,17 +778,19 @@ class _RoomScreenState extends State<RoomScreen> {
                   },
                 ),
 
-              if (isZone && _devices.isNotEmpty) const SizedBox(height: 16),
-
-              if (isZone && _devices.isNotEmpty)
+              // ── Move targets (zone only) ──
+              if (isZone) ...[
+                const SizedBox(height: 16),
                 _ZoneMoveTargets(
                   textColor: textColor,
                   mutedColor: mutedColor,
                   panelColor: panelColor,
                   onDropOutside: _moveDeviceOutsideZone,
                   onDropToNewZone: _moveDeviceToNewZone,
-                  onConfirmMove: _confirmPanelMove,
+                  onTapOutside: _handleTapOutside,
+                  onTapNewZone: _handleTapNewZone,
                 ),
+              ],
             ],
           ),
         ),
@@ -772,11 +805,13 @@ class _SettingsMenu extends StatelessWidget {
   final VoidCallback onDelete;
   final Color textColor;
   final bool isDark;
+  final bool isZone;
 
   const _SettingsMenu({
     required this.onDelete,
     required this.textColor,
     required this.isDark,
+    required this.isZone,
   });
 
   @override
@@ -817,9 +852,9 @@ class _SettingsMenu extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Удалить зону',
-                style: TextStyle(
+              Text(
+                isZone ? 'zone.delete_zone'.tr() : 'zone.delete_device'.tr(),
+                style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   color: Colors.redAccent,
                 ),
@@ -961,14 +996,14 @@ class _PowerCard extends StatelessWidget {
             children: [
               _StatusDot(
                 active: motionDetected,
-                label: motionDetected ? 'Движение' : 'Нет движения',
+                label: motionDetected ? 'device.motion'.tr() : 'device.no_motion'.tr(),
                 color: motionDetected
                     ? (isOn ? const Color(0xFF1A0F00) : Colors.greenAccent)
                     : mutedColor,
               ),
               _StatusDot(
                 active: isOnline,
-                label: isOnline ? 'Онлайн' : 'Офлайн',
+                label: isOnline ? 'common.online'.tr() : 'common.offline'.tr(),
                 color: isOnline
                     ? (isOn ? const Color(0xFF1A0F00) : Colors.greenAccent)
                     : Colors.redAccent,
@@ -1003,10 +1038,10 @@ class _BrightnessCard extends StatelessWidget {
   });
 
   static const _presets = [
-    _BrightnessPreset('🌑', 15, 'Минимум'),
-    _BrightnessPreset('🌒', 40, 'Эконом'),
-    _BrightnessPreset('🌓', 70, 'По умолч.'),
-    _BrightnessPreset('🌕', 100, 'Максимум'),
+    _BrightnessPreset('🌑', 15, 'device.preset_min'),
+    _BrightnessPreset('🌒', 40, 'device.preset_eco'),
+    _BrightnessPreset('🌓', 70, 'device.preset_default'),
+    _BrightnessPreset('🌕', 100, 'device.preset_max'),
   ];
 
   @override
@@ -1025,7 +1060,7 @@ class _BrightnessCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Яркость',
+                'device.brightness'.tr(),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -1103,7 +1138,7 @@ class _BrightnessCard extends StatelessWidget {
                       Text(preset.emoji, style: const TextStyle(fontSize: 22)),
                       const SizedBox(height: 3),
                       Text(
-                        preset.label,
+                        preset.label.tr(),
                         style: const TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
@@ -1163,7 +1198,7 @@ class _ModeCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'РЕЖИМ',
+            'device.mode_section'.tr(),
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1176,7 +1211,7 @@ class _ModeCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _ModeButton(
-                  label: 'Авто',
+                  label: 'device.mode_auto'.tr(),
                   emoji: '🤖',
                   selected: deviceMode == 'auto',
                   loading: modeLoading && deviceMode == 'auto',
@@ -1186,7 +1221,7 @@ class _ModeCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _ModeButton(
-                  label: 'Ручной',
+                  label: 'device.mode_manual'.tr(),
                   emoji: '✋',
                   selected: deviceMode == 'manual',
                   loading: modeLoading && deviceMode == 'manual',
@@ -1196,7 +1231,7 @@ class _ModeCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _ModeButton(
-                  label: 'По времени',
+                  label: 'device.mode_schedule'.tr(),
                   emoji: '⏰',
                   selected: deviceMode == 'schedule',
                   loading: modeLoading && deviceMode == 'schedule',
@@ -1228,6 +1263,13 @@ class _ModeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderCol = selected
+        ? Colors.transparent
+        : (isDark ? Colors.white24 : const Color(0xFFD0D5E0));
+    final textCol = selected
+        ? const Color(0xFF1A0F00)
+        : (isDark ? Colors.white60 : const Color(0xFF6D7481));
     return GestureDetector(
       onTap: loading ? null : onTap,
       child: AnimatedContainer(
@@ -1242,12 +1284,9 @@ class _ModeButton extends StatelessWidget {
                   end: Alignment.bottomRight,
                 )
               : null,
-          color: selected ? null : Colors.transparent,
+          color: selected ? null : (isDark ? Colors.transparent : const Color(0xFFF2F4F8)),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? Colors.transparent : Colors.white24,
-            width: 1,
-          ),
+          border: Border.all(color: borderCol, width: 1),
         ),
         alignment: Alignment.center,
         child: loading
@@ -1265,9 +1304,7 @@ class _ModeButton extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: selected
-                          ? const Color(0xFF1A0F00)
-                          : Colors.white60,
+                      color: textCol,
                     ),
                   ),
                 ],
@@ -1319,7 +1356,7 @@ class _PanelsGrid extends StatelessWidget {
           child: Row(
             children: [
               Text(
-                'Панели в зоне',
+                'device.panels_in_zone'.tr(),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -1338,7 +1375,7 @@ class _PanelsGrid extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${devices.length} шт.',
+                  '${devices.length} ${'common.pcs'.tr()}',
                   style: const TextStyle(
                     color: Color(0xFF1A0F00),
                     fontSize: 12,
@@ -1370,7 +1407,7 @@ class _PanelsGrid extends StatelessWidget {
                 final id = _id(device);
                 final isOn = deviceStates[id] ?? false;
                 final isLoading = deviceLoading.contains(id);
-                final name = (device['name'] ?? device['deviceId'] ?? 'Панель')
+                final name = (device['name'] ?? device['deviceId'] ?? 'device.panel'.tr())
                     .toString();
                 final brightness = _RoomScreenState._normBrightness(
                   (device['brightness'] as num?)?.toDouble() ?? 0,
@@ -1574,7 +1611,7 @@ class _PanelCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Отдельная панель',
+              'device.standalone_panel'.tr(),
               style: TextStyle(
                 color: isOn ? activeColor : mutedColor,
                 fontSize: 11,
@@ -1583,7 +1620,7 @@ class _PanelCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '$brightness%  •  Бат. $battery%',
+              '$brightness%  •  ${'device.bat_abbr'.tr()} $battery%',
               style: TextStyle(
                 color: mutedColor,
                 fontSize: 11,
@@ -1597,13 +1634,13 @@ class _PanelCard extends StatelessWidget {
               children: [
                 _StatusDot(
                   active: motion,
-                  label: motion ? 'Движение' : 'Нет движ.',
+                  label: motion ? 'device.motion_short'.tr() : 'device.no_motion_short'.tr(),
                   color: motion ? Colors.greenAccent : mutedColor,
                   small: true,
                 ),
                 _StatusDot(
                   active: online,
-                  label: online ? 'Online' : 'Offline',
+                  label: online ? 'common.online'.tr() : 'common.offline'.tr(),
                   color: online ? Colors.greenAccent : Colors.redAccent,
                   small: true,
                 ),
@@ -1630,11 +1667,8 @@ class _ZoneMoveTargets extends StatelessWidget {
   final Color panelColor;
   final Future<void> Function(_RoomDraggedPanel payload) onDropOutside;
   final Future<void> Function(_RoomDraggedPanel payload) onDropToNewZone;
-  final Future<bool> Function({
-    required String panelName,
-    required String targetName,
-  })
-  onConfirmMove;
+  final Future<void> Function() onTapOutside;
+  final Future<void> Function() onTapNewZone;
 
   const _ZoneMoveTargets({
     required this.textColor,
@@ -1642,7 +1676,8 @@ class _ZoneMoveTargets extends StatelessWidget {
     required this.panelColor,
     required this.onDropOutside,
     required this.onDropToNewZone,
-    required this.onConfirmMove,
+    required this.onTapOutside,
+    required this.onTapNewZone,
   });
 
   @override
@@ -1658,7 +1693,7 @@ class _ZoneMoveTargets extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Переместить панель',
+            'zone.move_panel'.tr(),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -1667,7 +1702,7 @@ class _ZoneMoveTargets extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Зажмите панель выше и перетащите сюда.',
+            'zone.move_panel_hint'.tr(),
             style: TextStyle(color: mutedColor, fontSize: 12.5, height: 1.35),
           ),
           const SizedBox(height: 14),
@@ -1676,32 +1711,20 @@ class _ZoneMoveTargets extends StatelessWidget {
               Expanded(
                 child: _RoomDropTarget(
                   icon: Icons.open_in_full_rounded,
-                  label: 'Вне зон',
-                  hint: 'Убрать из зоны',
-                  onAccept: (payload) async {
-                    final confirmed = await onConfirmMove(
-                      panelName: payload.name,
-                      targetName: 'Вне зон',
-                    );
-                    if (!confirmed) return;
-                    await onDropOutside(payload);
-                  },
+                  label: 'zone.move_out_of_zone'.tr(),
+                  hint: 'zone.remove_from_zone'.tr(),
+                  onAccept: onDropOutside,
+                  onTap: onTapOutside,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _RoomDropTarget(
                   icon: Icons.create_new_folder_rounded,
-                  label: 'Новая зона',
-                  hint: 'Создать и перенести',
-                  onAccept: (payload) async {
-                    final confirmed = await onConfirmMove(
-                      panelName: payload.name,
-                      targetName: 'новую зону',
-                    );
-                    if (!confirmed) return;
-                    await onDropToNewZone(payload);
-                  },
+                  label: 'zone.new_zone'.tr(),
+                  hint: 'zone.create_and_move'.tr(),
+                  onAccept: onDropToNewZone,
+                  onTap: onTapNewZone,
                 ),
               ),
             ],
@@ -1717,12 +1740,14 @@ class _RoomDropTarget extends StatelessWidget {
   final String label;
   final String hint;
   final Future<void> Function(_RoomDraggedPanel payload) onAccept;
+  final Future<void> Function() onTap;
 
   const _RoomDropTarget({
     required this.icon,
     required this.label,
     required this.hint,
     required this.onAccept,
+    required this.onTap,
   });
 
   @override
@@ -1740,7 +1765,9 @@ class _RoomDropTarget extends StatelessWidget {
       onAcceptWithDetails: (details) => onAccept(details.data),
       builder: (context, candidateData, rejectedData) {
         final active = candidateData.isNotEmpty;
-        return AnimatedContainer(
+        return GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -1783,7 +1810,7 @@ class _RoomDropTarget extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                active ? 'Отпустите' : hint,
+                active ? 'common.release'.tr() : hint,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1794,6 +1821,7 @@ class _RoomDropTarget extends StatelessWidget {
               ),
             ],
           ),
+        ),
         );
       },
     );
@@ -1876,7 +1904,7 @@ class _SensorCard extends StatelessWidget {
           _Row(
             icon: Icons.thermostat_rounded,
             iconColor: const Color(0xFFFF7043),
-            title: 'Температура',
+            title: 'device.temperature'.tr(),
             value: '${temperature.toStringAsFixed(1)} °C',
             valueColor: const Color(0xFFFF7043),
             textColor: textColor,
@@ -1886,7 +1914,7 @@ class _SensorCard extends StatelessWidget {
           _Row(
             icon: Icons.water_drop_rounded,
             iconColor: const Color(0xFF42A5F5),
-            title: 'Влажность',
+            title: 'device.humidity'.tr(),
             value: '${humidity.toStringAsFixed(1)} %',
             valueColor: const Color(0xFF42A5F5),
             textColor: textColor,
@@ -1896,7 +1924,7 @@ class _SensorCard extends StatelessWidget {
           _Row(
             icon: Icons.wb_sunny_outlined,
             iconColor: const Color(0xFFF7931A),
-            title: 'Освещённость',
+            title: 'device.illuminance'.tr(),
             value: '$lux lux',
             valueColor: const Color(0xFFF7931A),
             textColor: textColor,
@@ -1906,7 +1934,7 @@ class _SensorCard extends StatelessWidget {
           _Row(
             icon: Icons.battery_charging_full_rounded,
             iconColor: battery < 20 ? Colors.redAccent : Colors.green,
-            title: 'Заряд батареи',
+            title: 'device.battery_charge'.tr(),
             value: '$battery%',
             valueColor: battery < 20 ? Colors.redAccent : Colors.green,
             textColor: textColor,
@@ -1916,8 +1944,8 @@ class _SensorCard extends StatelessWidget {
           _Row(
             icon: Icons.motion_photos_on_outlined,
             iconColor: motionDetected ? Colors.green : mutedColor,
-            title: 'Движение',
-            value: motionDetected ? 'Обнаружено' : 'Нет',
+            title: 'device.motion'.tr(),
+            value: motionDetected ? 'device.motion_detected'.tr() : 'common.no'.tr(),
             valueColor: motionDetected ? Colors.green : mutedColor,
             textColor: textColor,
             mutedColor: mutedColor,
@@ -1926,8 +1954,8 @@ class _SensorCard extends StatelessWidget {
           _Row(
             icon: Icons.wifi_rounded,
             iconColor: isOnline ? Colors.green : Colors.redAccent,
-            title: 'Статус',
-            value: isOnline ? 'Online' : 'Offline',
+            title: 'common.status'.tr(),
+            value: isOnline ? 'common.online'.tr() : 'common.offline'.tr(),
             valueColor: isOnline ? Colors.green : Colors.redAccent,
             textColor: textColor,
             mutedColor: mutedColor,
@@ -2117,7 +2145,7 @@ class _NightGuardCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Ночной охранный режим',
+                        'night_guard.title'.tr(),
                         style: TextStyle(
                           color: textColor,
                           fontWeight: FontWeight.w600,
@@ -2126,7 +2154,7 @@ class _NightGuardCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'При движении — уведомление без включения света',
+                        'night_guard.hint'.tr(),
                         style: TextStyle(color: mutedColor, fontSize: 11),
                       ),
                     ],
@@ -2162,7 +2190,7 @@ class _NightGuardCard extends StatelessWidget {
                   const Icon(Icons.access_time_outlined, color: guardColor, size: 16),
                   const SizedBox(width: 8),
                   Text(
-                    'Период охраны: ${_fmt(startHour, startMinute)} — ${_fmt(endHour, endMinute)}',
+                    'night_guard.guard_period_label'.tr(namedArgs: {'start': _fmt(startHour, startMinute), 'end': _fmt(endHour, endMinute)}),
                     style: TextStyle(
                       color: mutedColor,
                       fontSize: 12,
@@ -2211,7 +2239,7 @@ class _DeviceActionsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Управление',
+            'device.management'.tr(),
             style: TextStyle(
               color: textColor,
               fontWeight: FontWeight.w700,
@@ -2224,7 +2252,7 @@ class _DeviceActionsCard extends StatelessWidget {
               Expanded(
                 child: _ActionBtn(
                   icon: Icons.troubleshoot_outlined,
-                  label: 'Диагностика',
+                  label: 'diagnostics.title'.tr(),
                   color: const Color(0xFF30D158),
                   onTap: () => context.push(
                     '/diagnostics/$deviceId',
@@ -2236,7 +2264,7 @@ class _DeviceActionsCard extends StatelessWidget {
               Expanded(
                 child: _ActionBtn(
                   icon: Icons.error_outline,
-                  label: 'Ошибки',
+                  label: 'diagnostics.errors'.tr(),
                   color: const Color(0xFFFF3B30),
                   onTap: () => context.push(
                     '/errors/$deviceId',
@@ -2248,7 +2276,7 @@ class _DeviceActionsCard extends StatelessWidget {
               Expanded(
                 child: _ActionBtn(
                   icon: Icons.build_outlined,
-                  label: 'Сервис',
+                  label: 'maintenance.short'.tr(),
                   color: const Color(0xFFFFD54F),
                   onTap: () => context.push(
                     '/maintenance/$deviceId',

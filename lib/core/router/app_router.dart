@@ -66,6 +66,14 @@ class AppRouter {
             StatefulShellBranch(
               routes: [
                 GoRoute(
+                  path: '/battery-tab',
+                  builder: (context, state) => const BatteryTabScreen(),
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
                   path: '/analytics',
                   builder: (context, state) => const AnalyticsScreen(),
                 ),

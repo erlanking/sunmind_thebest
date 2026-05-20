@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -42,7 +43,7 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _secondsLeft = 42);
     _startTimer();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Код отправлен повторно')),
+      SnackBar(content: Text('auth.resend'.tr())),
     );
   }
 
@@ -92,7 +93,7 @@ class _OtpScreenState extends State<OtpScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          'Введите код',
+          'auth.enter_code'.tr(),
           style: GoogleFonts.manrope(
             fontWeight: FontWeight.w800,
             fontSize: 17,
@@ -109,7 +110,7 @@ class _OtpScreenState extends State<OtpScreen> {
             const SizedBox(height: 24),
 
             Text(
-              'Мы отправили код на',
+              'auth.code_sent_to'.tr(),
               style: TextStyle(fontSize: 15, color: muted),
               textAlign: TextAlign.center,
             ),
@@ -147,8 +148,8 @@ class _OtpScreenState extends State<OtpScreen> {
                 duration: const Duration(milliseconds: 200),
                 child: Text(
                   _secondsLeft > 0
-                      ? 'Отправить заново через 0:${_secondsLeft.toString().padLeft(2, '0')}'
-                      : 'Отправить заново',
+                      ? '${'auth.resend'.tr()} 0:${_secondsLeft.toString().padLeft(2, '0')}'
+                      : 'auth.resend'.tr(),
                   style: TextStyle(
                     color: _secondsLeft == 0 ? kA2 : muted,
                     fontWeight: FontWeight.w600,

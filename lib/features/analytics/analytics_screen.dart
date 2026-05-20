@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -407,7 +408,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         if (mounted) {
           setState(() {
             loading = false;
-            error = 'Нет устройств. Добавьте панель.';
+            error = 'analytics.no_devices'.tr();
           });
         }
         return;
@@ -492,8 +493,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             error = null;
             showOfflineSnapshotNotice = true;
           } else if (ApiService.isOfflineError(e)) {
-            error =
-                'Нет интернета. Подключитесь к сети, чтобы загрузить аналитику.';
+            error = 'errors.no_internet_analytics'.tr();
           } else {
             error = e.toString();
           }
@@ -505,7 +505,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   String _bucketKey(DateTime dt, List<String> labels) {
     if (period == 'day') return dt.toLocal().hour.toString().padLeft(2, '0');
     if (period == 'week') return labels[(dt.toLocal().weekday - 1) % 7];
-    return 'Нед ${((dt.toLocal().day - 1) ~/ 7).clamp(0, 3) + 1}';
+    return '${'analytics.week_abbr'.tr()} ${((dt.toLocal().day - 1) ~/ 7).clamp(0, 3) + 1}';
   }
 
   void _buildChart(List<TelemetryPoint> points) {
@@ -513,9 +513,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     if (period == 'day') {
       labels = List.generate(24, (h) => h.toString().padLeft(2, '0'));
     } else if (period == 'week') {
-      labels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+      labels = [
+        'schedule.mon'.tr(),
+        'schedule.tue'.tr(),
+        'schedule.wed'.tr(),
+        'schedule.thu'.tr(),
+        'schedule.fri'.tr(),
+        'schedule.sat'.tr(),
+        'schedule.sun'.tr(),
+      ];
     } else {
-      labels = ['Нед 1', 'Нед 2', 'Нед 3', 'Нед 4'];
+      final w = 'analytics.week_abbr'.tr();
+      labels = ['$w 1', '$w 2', '$w 3', '$w 4'];
     }
 
     final Map<String, double> energyB = {for (final l in labels) l: 0.0};
@@ -585,7 +594,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final zoneName = (_devices[i]['zoneName'] as String?)?.trim();
       final name = (zoneName != null && zoneName.isNotEmpty)
           ? zoneName
-          : 'Прочие';
+          : 'analytics.other_zones'.tr();
       zoneMap[name] = (zoneMap[name] ?? 0) + analyticsList[i].energyKwh;
     }
     final totalZ = zoneMap.values.fold(0.0, (a, b) => a + b);
@@ -622,8 +631,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           _EventItem(
             icon: Icons.visibility_rounded,
             color: Colors.orange,
-            title: 'Датчик движения',
-            subtitle: '$label — авто-включение',
+            title: 'analytics.motion_sensor'.tr(),
+            subtitle: '$label — ${'analytics.auto_on'.tr()}',
             time: _timeStr(p.createdAt),
           ),
         );
@@ -635,10 +644,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 ? Icons.pan_tool_rounded
                 : Icons.smart_toy_rounded,
             color: p.manualMode ? Colors.purpleAccent : const Color(0xFF26C6DA),
-            title: p.manualMode ? 'Ручное изменение' : 'Авто-режим',
+            title: p.manualMode
+                ? 'analytics.manual_change'.tr()
+                : 'analytics.auto_mode_label'.tr(),
             subtitle: p.manualMode
                 ? '$label — ${(p.brightness / 255 * 100).round()}%'
-                : '$label — авто',
+                : '$label — ${'analytics.auto'.tr()}',
             time: _timeStr(p.createdAt),
           ),
         );
@@ -667,7 +678,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Аналитика'),
+        title: Text('analytics.title'.tr()),
         actions: [
           IconButton(
             onPressed: loading ? null : _load,
@@ -847,10 +858,10 @@ class _PeriodTabs extends StatelessWidget {
     required this.onChanged,
   });
 
-  static const _tabs = [
-    ('day', 'Сегодня'),
-    ('week', 'Неделя'),
-    ('month', 'Месяц'),
+  static List<(String, String)> get _tabs => [
+    ('day', 'analytics.period_day'.tr()),
+    ('week', 'analytics.period_week'.tr()),
+    ('month', 'analytics.period_month'.tr()),
   ];
 
   @override
@@ -921,7 +932,7 @@ class _OfflineSnapshotBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Нет интернета. Показаны последние сохранённые данные.',
+              'analytics.offline_data'.tr(),
               style: TextStyle(
                 color: textColor,
                 fontSize: 12.5,
@@ -976,8 +987,8 @@ class _StatsGrid extends StatelessWidget {
     final batPct = batteryPercent ?? 0;
     final remH = remainingHours ?? 0;
     final remLabel = remH >= 1
-        ? '${remH.toStringAsFixed(1)} ч'
-        : '${(remH * 60).round()} мин';
+        ? '${remH.toStringAsFixed(1)} ${'analytics.hour_abbr'.tr()}'
+        : '${(remH * 60).round()} ${'analytics.min_abbr'.tr()}';
 
     return GridView.count(
       crossAxisCount: 2,
@@ -988,7 +999,7 @@ class _StatsGrid extends StatelessWidget {
       childAspectRatio: 1.5,
       children: [
         _StatCard(
-          label: 'ЭКОНОМИЯ',
+          label: 'analytics.savings'.tr(),
           value: '${avgSavings.toStringAsFixed(0)}%',
           badge: avgSavings > 0 ? '+${avgSavings.toStringAsFixed(0)}%' : '0%',
           badgeColor: avgSavings > 0 ? const Color(0xFF2E7D32) : Colors.grey,
@@ -997,36 +1008,36 @@ class _StatsGrid extends StatelessWidget {
           mutedColor: mutedColor,
         ),
         _StatCard(
-          label: 'КВТ·Ч',
+          label: 'analytics.kwh_upper'.tr(),
           value: totalKwh.toStringAsFixed(2),
-          badge: 'кВт·ч',
+          badge: 'analytics.kwh'.tr(),
           badgeColor: const Color(0xFF1A3A5C),
           cardColor: cardColor,
           textColor: textColor,
           mutedColor: mutedColor,
         ),
         _StatCard(
-          label: 'ДВИЖЕНИЕ',
+          label: 'analytics.motion_upper'.tr(),
           value: motionCount.toString(),
-          badge: 'событий',
+          badge: 'analytics.events_count'.tr(),
           badgeColor: const Color(0xFF003838),
           cardColor: cardColor,
           textColor: textColor,
           mutedColor: mutedColor,
         ),
         _StatCard(
-          label: 'РАБОТА',
-          value: '${lightOnHours.toStringAsFixed(1)}ч',
-          badge: 'горит',
+          label: 'analytics.work'.tr(),
+          value: '${lightOnHours.toStringAsFixed(1)}${'analytics.hour_abbr'.tr()}',
+          badge: 'analytics.on_badge'.tr(),
           badgeColor: const Color(0xFF003838),
           cardColor: cardColor,
           textColor: textColor,
           mutedColor: mutedColor,
         ),
         _StatCard(
-          label: 'СТОИМОСТЬ',
+          label: 'analytics.cost'.tr(),
           value: costSom.toStringAsFixed(0),
-          badge: 'сом',
+          badge: 'analytics.som'.tr(),
           badgeColor: const Color(0xFF4A2800),
           cardColor: cardColor,
           textColor: textColor,
@@ -1034,7 +1045,7 @@ class _StatsGrid extends StatelessWidget {
         ),
         if (batteryPercent != null)
           _StatCard(
-            label: 'БАТАРЕЯ',
+            label: 'analytics.battery_upper'.tr(),
             value: '$batPct%',
             badge: remH > 0 ? remLabel : '—',
             badgeColor: _batteryColor(batPct),
@@ -1044,9 +1055,9 @@ class _StatsGrid extends StatelessWidget {
           )
         else
           _StatCard(
-            label: 'БАТАРЕЯ',
+            label: 'analytics.battery_upper'.tr(),
             value: '—',
-            badge: 'нет данных',
+            badge: 'analytics.no_data'.tr(),
             badgeColor: Colors.grey.shade800,
             cardColor: cardColor,
             textColor: textColor,
@@ -1202,7 +1213,7 @@ class _ConsumptionChart extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Потребление',
+                    'analytics.consumption'.tr(),
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -1210,7 +1221,7 @@ class _ConsumptionChart extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'кВт·ч',
+                    'analytics.kwh'.tr(),
                     style: TextStyle(fontSize: 12, color: mutedColor),
                   ),
                 ],
@@ -1240,7 +1251,7 @@ class _ConsumptionChart extends StatelessWidget {
                     getTooltipItems: (spots) => spots
                         .map(
                           (s) => LineTooltipItem(
-                            '${s.y.toStringAsFixed(4)} кВт',
+                            '${s.y.toStringAsFixed(4)} ${'analytics.kwt'.tr()}',
                             TextStyle(
                               color: _accent,
                               fontWeight: FontWeight.w600,
@@ -1372,7 +1383,7 @@ class _MotionChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Активность людей',
+            'analytics.motion_activity'.tr(),
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -1380,7 +1391,7 @@ class _MotionChart extends StatelessWidget {
             ),
           ),
           Text(
-            'срабатываний датчика',
+            'analytics.trigger_count'.tr(),
             style: TextStyle(fontSize: 12, color: mutedColor),
           ),
           const SizedBox(height: 16),
@@ -1393,7 +1404,7 @@ class _MotionChart extends StatelessWidget {
                   touchTooltipData: BarTouchTooltipData(
                     getTooltipColor: (_) => cardColor,
                     getTooltipItem: (group, _, rod, _) => BarTooltipItem(
-                      '${rod.toY.round()} раз',
+                      '${rod.toY.round()} ${'analytics.times'.tr()}',
                       TextStyle(
                         color: Colors.orangeAccent,
                         fontWeight: FontWeight.w600,
@@ -1521,7 +1532,7 @@ class _BatteryChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Заряд батареи',
+            'device.battery_charge'.tr(),
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -1667,7 +1678,7 @@ class _PowerSourceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Источник питания',
+            'battery.power_source'.tr(),
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -1675,7 +1686,7 @@ class _PowerSourceCard extends StatelessWidget {
             ),
           ),
           Text(
-            'Розетка vs аккумулятор',
+            'battery.socket_vs_battery'.tr(),
             style: TextStyle(fontSize: 12, color: mutedColor),
           ),
           const SizedBox(height: 20),
@@ -1717,7 +1728,7 @@ class _PowerSourceCard extends StatelessWidget {
                   children: [
                     _PowerSourceLegendRow(
                       color: acColor,
-                      label: 'Розетка',
+                      label: 'battery.socket'.tr(),
                       percent: acPct * 100,
                       textColor: textColor,
                       mutedColor: mutedColor,
@@ -1725,7 +1736,7 @@ class _PowerSourceCard extends StatelessWidget {
                     const SizedBox(height: 14),
                     _PowerSourceLegendRow(
                       color: batColor,
-                      label: 'Аккумулятор',
+                      label: 'device.battery'.tr(),
                       percent: batPct * 100,
                       textColor: textColor,
                       mutedColor: mutedColor,
@@ -1781,7 +1792,7 @@ class _PowerSourceLegendRow extends StatelessWidget {
                 ),
               ),
               Text(
-                '${percent.toStringAsFixed(0)}% времени',
+                '${percent.toStringAsFixed(0)}${'analytics.percent_time'.tr()}',
                 style: TextStyle(fontSize: 11, color: mutedColor),
               ),
             ],
@@ -1916,7 +1927,7 @@ class _ZoneBreakdownState extends State<_ZoneBreakdown> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'По комнатам',
+            'home.by_rooms'.tr(),
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -2043,7 +2054,7 @@ class _EventsList extends StatelessWidget {
           Row(
             children: [
               Text(
-                'События',
+                'analytics.events'.tr(),
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -2052,7 +2063,7 @@ class _EventsList extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                'из телеметрии',
+                'analytics.of_telemetry'.tr(),
                 style: TextStyle(color: mutedColor, fontSize: 12),
               ),
             ],
@@ -2062,7 +2073,7 @@ class _EventsList extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
-                'Нет событий за период.\nДанные появятся когда устройство пришлёт телеметрию.',
+                'analytics.no_events'.tr(),
                 style: TextStyle(color: mutedColor, fontSize: 13),
               ),
             )
@@ -2132,11 +2143,11 @@ class _HeroSummaryCard extends StatelessWidget {
   String get _periodLabel {
     switch (period) {
       case 'week':
-        return 'НЕДЕЛИ';
+        return 'analytics.period_week_of'.tr();
       case 'month':
-        return 'МЕСЯЦА';
+        return 'analytics.period_month_of'.tr();
       default:
-        return 'СЕГОДНЯ';
+        return 'analytics.period_today'.tr();
     }
   }
 
@@ -2164,7 +2175,7 @@ class _HeroSummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'ПОТРЕБЛЕНИЕ $_periodLabel',
+                  '${'analytics.consumption_upper'.tr()} $_periodLabel',
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -2194,7 +2205,7 @@ class _HeroSummaryCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '−${avgSavings.toStringAsFixed(0)}% к прошлому периоду',
+                        '−${avgSavings.toStringAsFixed(0)}% ${'analytics.prev_period'.tr()}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: Color(0xFF1A0F00),
@@ -2259,7 +2270,7 @@ class _AiHintCardState extends State<_AiHintCard> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'SUNMIND ПОДСКАЗКА',
+                  'analytics.ai_hint_title'.tr(),
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
@@ -2281,9 +2292,9 @@ class _AiHintCardState extends State<_AiHintCard> {
           ),
           const SizedBox(height: 10),
           Text(
-            'Вы экономите ${widget.savings.toStringAsFixed(0)}% энергии! '
-            'Попробуйте расписание освещения для спальни — это позволит '
-            'снизить потребление ещё на 10–15%.',
+            'analytics.ai_hint_text'.tr(
+              namedArgs: {'savings': widget.savings.toStringAsFixed(0)},
+            ),
             style: TextStyle(
               fontSize: 13,
               color: widget.textColor,
@@ -2327,7 +2338,7 @@ class _ErrorBox extends StatelessWidget {
             style: TextStyle(color: textColor, fontSize: 13),
           ),
           const SizedBox(height: 14),
-          ElevatedButton(onPressed: onRetry, child: const Text('Повторить')),
+          ElevatedButton(onPressed: onRetry, child: Text('common.retry'.tr())),
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:sunmind_thebest/core/api/mqtt_service.dart';
 import 'package:sunmind_thebest/core/services/haptic_service.dart';
@@ -42,19 +43,13 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
       if (!mounted) return;
       HapticService.success();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Команда отправлена. Устройство перезагрузится и подключится к новой сети.',
-          ),
-        ),
+        SnackBar(content: Text('wifi.sent'.tr())),
       );
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Не удалось отправить команду. Проверьте подключение.'),
-        ),
+        SnackBar(content: Text('errors.send_command'.tr())),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -71,7 +66,7 @@ class _WifiSetupScreenState extends State<WifiSetupScreen> {
     final mutedColor = isDark ? Colors.white70 : const Color(0xFF6D7481);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Настройка Wi-Fi'), centerTitle: true),
+      appBar: AppBar(title: Text('wifi.setup'.tr()), centerTitle: true),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Container(

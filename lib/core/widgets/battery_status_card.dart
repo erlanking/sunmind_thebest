@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 class BatteryStatusCard extends StatelessWidget {
@@ -17,9 +18,9 @@ class BatteryStatusCard extends StatelessWidget {
   }
 
   String _batteryState() {
-    if (batteryPercent <= 20) return 'Низкий заряд';
-    if (batteryPercent <= 50) return 'Средний заряд';
-    return 'Нормальный заряд';
+    if (batteryPercent <= 20) return 'battery.low_charge'.tr();
+    if (batteryPercent <= 50) return 'battery.medium_charge'.tr();
+    return 'battery.normal_charge'.tr();
   }
 
   IconData _batteryIcon() {
@@ -68,7 +69,7 @@ class BatteryStatusCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Аккумулятор',
+                      'battery.title'.tr(),
                       style: TextStyle(
                         color: textColor,
                         fontWeight: FontWeight.w700,

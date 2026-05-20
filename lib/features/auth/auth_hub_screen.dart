@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -52,7 +53,7 @@ class _AuthHubScreenState extends State<AuthHubScreen> {
         SnackBar(
           content: Text(
             _authController.errorMessage ??
-                'Не удалось войти через Google. Попробуйте ещё раз.',
+                'errors.google_login'.tr(),
           ),
         ),
       );
@@ -134,7 +135,7 @@ class _AuthHubScreenState extends State<AuthHubScreen> {
                   const SizedBox(height: 48),
 
                   Text(
-                    'Управляйте светом\nлегко',
+                    'onboarding.title_1'.tr(),
                     textAlign: TextAlign.center,
                     style: GoogleFonts.manrope(
                       fontSize: 30,
@@ -148,7 +149,7 @@ class _AuthHubScreenState extends State<AuthHubScreen> {
                   const SizedBox(height: 10),
 
                   Text(
-                    'Умная экосистема освещения в вашем кармане',
+                    'onboarding.smart_ecosystem'.tr(),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -171,7 +172,7 @@ class _AuthHubScreenState extends State<AuthHubScreen> {
                       HapticService.light();
                       // Apple sign-in not yet implemented
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Apple Sign-In скоро будет добавлен')),
+                        SnackBar(content: Text('Apple Sign-In soon')),
                       );
                     },
                   ),
@@ -207,7 +208,7 @@ class _AuthHubScreenState extends State<AuthHubScreen> {
                     onTap: () => context.push('/login'),
                     child: RichText(
                       text: TextSpan(
-                        text: 'Уже есть аккаунт? ',
+                        text: '${'auth.have_account'.tr()} ',
                         style: TextStyle(
                           color: isDark
                               ? const Color(0xFF6E6E75)
@@ -216,7 +217,7 @@ class _AuthHubScreenState extends State<AuthHubScreen> {
                         ),
                         children: [
                           TextSpan(
-                            text: 'Войти',
+                            text: 'auth.login'.tr(),
                             style: TextStyle(
                               color: kA2,
                               fontWeight: FontWeight.w700,

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:easy_localization/easy_localization.dart' hide DateFormat;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:sunmind_thebest/core/api/api_service.dart';
@@ -61,7 +62,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     } catch (e) {
       setState(() {
         error = ApiService.isOfflineError(e)
-            ? 'Нет интернета. Подключитесь к сети, чтобы загрузить устройство.'
+            ? 'errors.no_internet_device'.tr()
             : e.toString();
       });
     } finally {
@@ -97,20 +98,20 @@ class _DeviceScreenState extends State<DeviceScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           backgroundColor: const Color(0xFF171A1F),
-          title: const Text('Сменить WiFi'),
+          title: Text('wifi.change_action'.tr()),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: ssidCtrl,
-                decoration: const InputDecoration(labelText: 'SSID (имя сети)'),
+                decoration: InputDecoration(labelText: 'wifi.ssid'.tr()),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: passCtrl,
                 obscureText: obscure,
                 decoration: InputDecoration(
-                  labelText: 'Пароль',
+                  labelText: 'auth.password'.tr(),
                   suffixIcon: IconButton(
                     icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
                     onPressed: () => setS(() => obscure = !obscure),
@@ -122,11 +123,11 @@ class _DeviceScreenState extends State<DeviceScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Отмена'),
+              child: Text('common.cancel'.tr()),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Отправить'),
+              child: Text('common.send'.tr()),
             ),
           ],
         ),
@@ -144,7 +145,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
       await _mqtt.publish(topic, payload);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('WiFi отправлен — устройство перезагрузится')),
+          SnackBar(content: Text('wifi.sent'.tr())),
         );
       }
     } catch (e) {
@@ -174,13 +175,13 @@ class _DeviceScreenState extends State<DeviceScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Расписание сохранено')));
+        ).showSnackBar(SnackBar(content: Text('schedule.schedule_saved'.tr())));
       }
       await _load();
     } catch (e) {
       setState(() {
         error = ApiService.isOfflineError(e)
-            ? 'Включите интернет, чтобы управлять устройствами.'
+            ? 'errors.internet'.tr()
             : e.toString();
       });
     } finally {
@@ -192,7 +193,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Устройство'),
+        title: Text('device.device'.tr()),
         actions: [
           IconButton(
             onPressed: loading ? null : _load,
@@ -209,25 +210,25 @@ class _DeviceScreenState extends State<DeviceScreen> {
               ? _ErrorBox(error: error!, onRetry: _load)
               : ListView(
                   children: [
-                    _sectionTitle('Статус'),
+                    _sectionTitle('common.status'.tr()),
                     _card(
                       child: Column(
                         children: [
                           _row('ID', status?.deviceId ?? ''),
-                          _row('Освещённость', '${status?.lux ?? 0} lx'),
+                          _row('device.illuminance'.tr(), '${status?.lux ?? 0} lx'),
                           _row(
-                            'Температура',
+                            'device.temperature'.tr(),
                             '${(status?.temperature ?? 0).toStringAsFixed(1)} °C',
                           ),
                           _row(
-                            'Влажность',
+                            'device.humidity'.tr(),
                             '${(status?.humidity ?? 0).toStringAsFixed(1)} %',
                           ),
                           _row(
-                            'Движение',
-                            status?.motion == true ? 'Да' : 'Нет',
+                            'device.motion'.tr(),
+                            status?.motion == true ? 'common.yes'.tr() : 'common.no'.tr(),
                           ),
-                          _row('Яркость', '${status?.brightness ?? 0}'),
+                          _row('device.brightness'.tr(), '${status?.brightness ?? 0}'),
                           const SizedBox(height: 10),
                           BatteryStatusCard(
                             batteryPercent: status?.batteryPercent ?? 0,
@@ -235,11 +236,11 @@ class _DeviceScreenState extends State<DeviceScreen> {
                           ),
                           const SizedBox(height: 10),
                           _row(
-                            'Ручной режим',
-                            status?.manualMode == true ? 'Вкл' : 'Выкл',
+                            'device.manual_mode_label'.tr(),
+                            status?.manualMode == true ? 'common.on'.tr() : 'common.off'.tr(),
                           ),
                           _row(
-                            'Последний онлайн',
+                            'device.last_online'.tr(),
                             status?.lastSeen != null
                                 ? DateFormat(
                                     'dd.MM.yyyy HH:mm',
@@ -250,21 +251,21 @@ class _DeviceScreenState extends State<DeviceScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    _sectionTitle('Расписание'),
+                    _sectionTitle('schedule.schedule'.tr()),
                     _card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Включить в',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                          Text(
+                            'schedule.turn_on_at'.tr(),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 8),
                           _timeButton(onHour, onMinute, () => _pickTime(true)),
                           const SizedBox(height: 16),
-                          const Text(
-                            'Выключить в',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                          Text(
+                            'schedule.turn_off_at'.tr(),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 8),
                           _timeButton(
@@ -293,9 +294,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
                                         strokeWidth: 2,
                                       ),
                                     )
-                                  : const Text(
-                                      'Сохранить',
-                                      style: TextStyle(
+                                  : Text(
+                                      'common.save'.tr(),
+                                      style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -305,14 +306,14 @@ class _DeviceScreenState extends State<DeviceScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    _sectionTitle('WiFi устройства'),
+                    _sectionTitle('wifi.setup'.tr()),
                     _card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Отправьте новые данные WiFi на устройство. После получения ESP32 сохранит их и перезагрузится.',
-                            style: TextStyle(color: Colors.white70, fontSize: 13),
+                          Text(
+                            'wifi.mqtt_hint'.tr(),
+                            style: const TextStyle(color: Colors.white70, fontSize: 13),
                           ),
                           const SizedBox(height: 14),
                           SizedBox(
@@ -326,7 +327,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
                                       child: CircularProgressIndicator(strokeWidth: 2),
                                     )
                                   : const Icon(Icons.wifi),
-                              label: const Text('Сменить WiFi'),
+                              label: Text('wifi.change_action'.tr()),
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
@@ -419,7 +420,7 @@ class _ErrorBox extends StatelessWidget {
         children: [
           Text(error, textAlign: TextAlign.center),
           const SizedBox(height: 12),
-          ElevatedButton(onPressed: onRetry, child: const Text('Повторить')),
+          ElevatedButton(onPressed: onRetry, child: Text('common.retry'.tr())),
         ],
       ),
     );
